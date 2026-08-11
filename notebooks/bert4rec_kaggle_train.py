@@ -407,8 +407,15 @@ print(f"✓ Metrics: {metrics}")
 
 
 # ── Cell 10: Upload to Azure Blob ─────────────────────────────────────────────
-print("\nUploading model artifact to Azure Blob ...")
-upload_blob(model_path,   "models/bert4rec_candidate.pkl")
-upload_blob(metrics_path, "models/bert4rec_metrics.json")
-print("✓ All artifacts uploaded to Azure Blob Storage")
+print("\nSaving model artifact ...")
+if "upload_blob" in globals() and os.environ.get("AZURE_STORAGE_CONNECTION_STRING"):
+    try:
+        upload_blob(model_path,   "models/bert4rec_candidate.pkl")
+        upload_blob(metrics_path, "models/bert4rec_metrics.json")
+        print("✓ All artifacts uploaded to Azure Blob Storage")
+    except Exception as e:
+        print(f"Azure Blob upload skipped: {e}")
+else:
+    print("✓ Model artifact saved to Kaggle output (/kaggle/working/bert4rec_candidate.pkl)")
+
 print("\n🎉 BERT4Rec training complete!")

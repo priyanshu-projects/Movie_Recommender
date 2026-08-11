@@ -101,17 +101,18 @@ class Recommender:
         ][-50:]
 
     def _enrich(self, recs: list[dict]) -> list[dict]:
-        """Add title and genres from movies.csv."""
-        if self.movies_df is None:
-            return recs
-        movie_info = self.movies_df.set_index("movieId")
+        """Add title and genres from movies.csv and sanitize numpy types for JSON serialization."""
+        movie_info = self.movies_df.set_index("movieId") if self.movies_df is not None else None
         enriched = []
         for r in recs:
-            mid = r["movieId"]
-            row = movie_info.loc[mid] if mid in movie_info.index else None
+            mid = int(r["movieId"])
+            score_val = r.get("score") if "score" in r else r.get("predicted_rating", 0.0)
+            score = float(score_val) if score_val is not None else 0.0
+            row = movie_info.loc[mid] if (movie_info is not None and mid in movie_info.index) else None
             enriched.append({
-                **r,
-                "title":  row["title"]  if row is not None else "Unknown",
-                "genres": row["genres"] if row is not None else "Unknown",
+                "movieId": mid,
+                "score": round(score, 4),
+                "title": str(row["title"]) if row is not None else "Unknown",
+                "genres": str(row["genres"]) if row is not None else "Unknown",
             })
         return enriched
