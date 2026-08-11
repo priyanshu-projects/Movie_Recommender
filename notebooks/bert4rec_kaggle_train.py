@@ -142,20 +142,20 @@ import yaml
 # Inline config — mirrors configs/config.yaml but with Kaggle paths
 CONFIG = {
     "bert4rec": {
-        "embedding_dim":         64,
-        "hidden_dim":            64,
-        "num_layers":            2,
-        "num_attention_heads":   2,
-        "feed_forward_dim":      256,
+        "embedding_dim":         128,
+        "hidden_dim":            128,
+        "num_layers":            4,
+        "num_attention_heads":   4,
+        "feed_forward_dim":      512,
         "max_sequence_length":   50,
-        "dropout":               0.2,
-        "attention_dropout":     0.2,
+        "dropout":               0.15,
+        "attention_dropout":     0.15,
         "mask_probability":      0.20,
-        "learning_rate":         0.0001,
+        "learning_rate":         0.0005,
         "weight_decay":          0.01,
-        "batch_size":            256,       # Larger batch on GPU
-        "max_epochs":            8 if WARM_START else 30,
-        "early_stopping_patience": 3,
+        "batch_size":            128,       # High performance T4 GPU batch
+        "max_epochs":            10 if WARM_START else 40,
+        "early_stopping_patience": 5,
     },
     "sequences": {
         "min_rating_threshold": 3.5,

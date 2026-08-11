@@ -42,20 +42,20 @@ svd:
 
 # ── BERT4Rec Model ────────────────────────────────────────────────────────────
 bert4rec:
-  embedding_dim: 64
-  hidden_dim: 64
-  num_layers: 2
-  num_attention_heads: 2
-  feed_forward_dim: 256
+  embedding_dim: 128
+  hidden_dim: 128
+  num_layers: 4
+  num_attention_heads: 4
+  feed_forward_dim: 512
   max_sequence_length: 50
-  dropout: 0.2
-  attention_dropout: 0.2
+  dropout: 0.15
+  attention_dropout: 0.15
   mask_probability: 0.20
   # Training
-  learning_rate: 0.0001
+  learning_rate: 0.0005
   weight_decay: 0.01
-  batch_size: 32
-  max_epochs: 30
+  batch_size: 128
+  max_epochs: 40
   early_stopping_patience: 5
 
 # ── Evaluation ────────────────────────────────────────────────────────────────
