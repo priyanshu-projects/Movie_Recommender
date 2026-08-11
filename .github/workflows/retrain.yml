@@ -171,7 +171,7 @@ jobs:
         if: inputs.skip_bert4rec != 'true'
         run: |
           python -m src.training.kaggle_trigger \
-            --kernel ${{ secrets.KAGGLE_KERNEL_SLUG }} \
+            --kernel "${{ secrets.KAGGLE_KERNEL_SLUG || 'slavery786/bert4rec-movie-recommender-fine-tuning' }}" \
             --timeout 3600
 
       # ── Step 8: Download BERT4Rec model from Azure Blob ───────────────────
