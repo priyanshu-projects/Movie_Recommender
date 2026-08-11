@@ -1,5 +1,5 @@
 {
-  "id": "slavery786/bert4rec-movie-recsys",
+  "id": "slavery786/bert4rec-movie-recommender-fine-tuning",
   "title": "BERT4Rec Movie Recommender Fine-Tuning",
   "code_file": "bert4rec_kaggle_train.py",
   "language": "python",

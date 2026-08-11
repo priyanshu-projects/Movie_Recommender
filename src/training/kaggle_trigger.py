@@ -1,102 +1,76 @@
 """
 src/training/kaggle_trigger.py
 
-Triggers a Kaggle notebook kernel via the Kaggle API and polls until complete.
+Triggers a Kaggle notebook kernel via the Kaggle CLI and polls until complete.
 Used by GitHub Actions to kick off BERT4Rec GPU fine-tuning on Kaggle T4.
 
-Required env vars (from GitHub Secrets):
-    KAGGLE_USERNAME  — your Kaggle username
-    KAGGLE_KEY       — your Kaggle API key
+Required env vars (from GitHub Secrets / environment):
+    KAGGLE_API_TOKEN or (KAGGLE_USERNAME and KAGGLE_KEY)
 
 Usage:
     python -m src.training.kaggle_trigger \
-        --kernel priyanshu-projects/bert4rec-finetune \
+        --kernel slavery786/bert4rec-movie-recommender-fine-tuning \
         --timeout 3600
 """
 
 import argparse
-import json
 import logging
 import os
+import subprocess
 import time
-
-import requests
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-KAGGLE_API = "https://www.kaggle.com/api/v1"
+
+def trigger_kernel(kernel_dir: Path = Path("notebooks")) -> str:
+    """Push kernel code to Kaggle to trigger a new GPU run."""
+    token = os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY")
+    env = os.environ.copy()
+    if token:
+        env["KAGGLE_API_TOKEN"] = token
+
+    logger.info("Pushing kernel from %s to Kaggle...", kernel_dir)
+    res = subprocess.run(
+        ["kaggle", "kernels", "push"],
+        cwd=kernel_dir,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode != 0:
+        logger.error("Failed to push kernel: %s", res.stderr)
+        raise RuntimeError(f"Kaggle push failed: {res.stderr}")
+
+    logger.info("✓ Kernel pushed successfully: %s", res.stdout.strip())
+    return res.stdout.strip()
 
 
-def _get_request_kwargs() -> dict:
-    """Return requests kwargs (headers and/or auth) for Kaggle API calls."""
-    username = os.environ.get("KAGGLE_USERNAME", "")
-    key = os.environ.get("KAGGLE_KEY", "")
+def poll_kernel(kernel_slug: str, timeout_seconds: int = 3600, poll_interval: int = 20) -> bool:
+    """Poll Kaggle kernel status until COMPLETE or timeout."""
+    token = os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY")
+    env = os.environ.copy()
+    if token:
+        env["KAGGLE_API_TOKEN"] = token
 
-    if key.startswith("KGAT_"):
-        return {"headers": {"Authorization": f"Bearer {key}"}}
-    return {"auth": (username, key)}
-
-
-def trigger_kernel(kernel_slug: str) -> str:
-    """
-    Push (trigger) a Kaggle kernel run.
-    kernel_slug format: "username/kernel-name"
-
-    Returns the new kernel run version number.
-    """
-    owner, kernel = kernel_slug.split("/")
-    kwargs = _get_request_kwargs()
-
-    # Get current kernel metadata to build push payload
-    meta_url = f"{KAGGLE_API}/kernels/{owner}/{kernel}"
-    resp = requests.get(meta_url, timeout=30, **kwargs)
-    resp.raise_for_status()
-    meta = resp.json()
-
-    # Trigger a new run
-    push_url = f"{KAGGLE_API}/kernels/push"
-    payload = {
-        "slug": kernel,
-        "newTitle": meta.get("title", kernel),
-        "source": meta.get("source", ""),
-        "language": meta.get("language", "python"),
-        "kernelType": meta.get("kernelType", "notebook"),
-        "isPrivate": True,
-        "enableGpu": True,
-        "enableInternet": True,
-        "datasetDataSources": meta.get("datasetDataSources", []),
-        "kernelDataSources": meta.get("kernelDataSources", []),
-        "categoryIds": [],
-    }
-    resp = requests.post(push_url, json=payload, timeout=30, **kwargs)
-    resp.raise_for_status()
-    version = resp.json().get("currentRunningVersion", "unknown")
-    logger.info("Kaggle kernel triggered: %s v%s", kernel_slug, version)
-    return str(version)
-
-
-def poll_kernel(kernel_slug: str, timeout_seconds: int = 3600, poll_interval: int = 30) -> bool:
-    """
-    Poll Kaggle kernel status until COMPLETE or timeout.
-    Returns True if completed successfully, False otherwise.
-    """
-    owner, kernel = kernel_slug.split("/")
-    kwargs = _get_request_kwargs()
-    status_url = f"{KAGGLE_API}/kernels/{owner}/{kernel}"
     deadline = time.time() + timeout_seconds
+    logger.info("Polling kernel status for %s (timeout: %ds)...", kernel_slug, timeout_seconds)
 
-    logger.info("Polling kernel %s (timeout: %ds) ...", kernel_slug, timeout_seconds)
     while time.time() < deadline:
-        resp = requests.get(status_url, timeout=30, **kwargs)
-        resp.raise_for_status()
-        status = resp.json().get("currentRunningStatus", "unknown")
-        logger.info("  Kernel status: %s", status)
+        res = subprocess.run(
+            ["kaggle", "kernels", "status", kernel_slug],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        output = res.stdout.strip()
+        logger.info("  Status output: %s", output)
 
-        if status == "complete":
-            logger.info("✓ Kernel completed successfully.")
+        if "complete" in output.lower() or "complete" in res.stderr.lower():
+            logger.info("✓ Kernel execution completed successfully!")
             return True
-        elif status in ("error", "cancelAcknowledged", "cancel"):
-            logger.error("✗ Kernel failed with status: %s", status)
+        elif "error" in output.lower() or "failed" in output.lower():
+            logger.error("✗ Kernel execution failed: %s", output)
             return False
 
         time.sleep(poll_interval)
@@ -105,18 +79,18 @@ def poll_kernel(kernel_slug: str, timeout_seconds: int = 3600, poll_interval: in
     return False
 
 
-def trigger_and_wait(kernel_slug: str, timeout_seconds: int = 3600) -> bool:
-    """Trigger kernel and wait for completion. Returns True if successful."""
-    trigger_kernel(kernel_slug)
+def trigger_and_wait(kernel_slug: str, kernel_dir: Path = Path("notebooks"), timeout_seconds: int = 3600) -> bool:
+    trigger_kernel(kernel_dir)
     return poll_kernel(kernel_slug, timeout_seconds)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kernel",  required=True, help="username/kernel-name")
+    parser.add_argument("--kernel", default="slavery786/bert4rec-movie-recommender-fine-tuning")
+    parser.add_argument("--dir",    default="notebooks")
     parser.add_argument("--timeout", type=int, default=3600)
     args = parser.parse_args()
 
-    success = trigger_and_wait(args.kernel, args.timeout)
+    success = poll_kernel(args.kernel, timeout_seconds=args.timeout)
     exit(0 if success else 1)

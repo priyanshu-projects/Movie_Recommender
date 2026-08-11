@@ -236,14 +236,15 @@ class BERT4RecModel(nn.Module):
             dropout=cfg["attention_dropout"],
             batch_first=True, norm_first=True,
         )
-        self.transformer      = nn.TransformerEncoder(encoder_layer, cfg["num_layers"])
-        self.prediction_head  = nn.Linear(emb_dim, vocab_size)
+        self.transformer      = nn.TransformerEncoder(encoder_layer, cfg["num_layers"], enable_nested_tensor=False)
+        self.prediction_head  = nn.Linear(emb_dim, vocab_size, bias=False)
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None: nn.init.zeros_(m.bias)
             elif isinstance(m, nn.Embedding):
                 nn.init.normal_(m.weight, 0, emb_dim ** -0.5)
+        self.prediction_head.weight = self.item_embedding.weight
 
     def forward(self, input_ids):
         B, L = input_ids.shape
@@ -273,11 +274,13 @@ print(f"Model parameters: {total_params:,}")
 
 # ── Cell 8: Training loop ─────────────────────────────────────────────────────
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 cfg        = CONFIG["bert4rec"]
 optimizer  = AdamW(model.parameters(), lr=cfg["learning_rate"], weight_decay=cfg["weight_decay"])
-criterion  = nn.CrossEntropyLoss(ignore_index=-100)
 max_epochs = cfg["max_epochs"]
+scheduler  = CosineAnnealingLR(optimizer, T_max=max_epochs, eta_min=1e-6)
+criterion  = nn.CrossEntropyLoss(ignore_index=-100)
 patience   = cfg["early_stopping_patience"]
 
 best_val_loss    = float("inf")
@@ -301,6 +304,7 @@ for epoch in range(1, max_epochs + 1):
         nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         total_loss += loss.item()
+    scheduler.step()
     avg_train = total_loss / len(train_loader)
 
     # Validate
