@@ -38,59 +38,76 @@ except Exception as e:
     print(f"Continuing with Kaggle environment: {e}")
 
 
-# ── Cell 2: Kaggle secrets → env vars ────────────────────────────────────────
+# ── Cell 2: Kaggle secrets & data setup ──────────────────────────────────────
 import os
+import io
+import zipfile
+import requests
+from pathlib import Path
 
-# Kaggle Secrets API (available in Kaggle notebooks)
+# Load secrets if attached
 try:
     from kaggle_secrets import UserSecretsClient
     secrets = UserSecretsClient()
     os.environ["AZURE_STORAGE_CONNECTION_STRING"] = secrets.get_secret("AZURE_STORAGE_CONNECTION_STRING")
     os.environ["AZURE_STORAGE_CONTAINER"]         = secrets.get_secret("AZURE_STORAGE_CONTAINER")
-    print("✓ Secrets loaded from Kaggle")
-except ImportError:
-    print("Not running in Kaggle — expecting env vars already set")
+    print("✓ Secrets loaded from Kaggle secrets store")
+except Exception as e:
+    print(f"Azure secrets not attached in Kaggle ({e}) — using direct dataset download mode")
 
 
-# ── Cell 3: Pull training data from Azure Blob ────────────────────────────────
-import json
-from pathlib import Path
-from azure.storage.blob import BlobServiceClient
-
-CONTAINER     = os.environ["AZURE_STORAGE_CONTAINER"]
-CONN_STR      = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
-blob_service  = BlobServiceClient.from_connection_string(CONN_STR)
-
-
-def download_blob(blob_name: str, local_path: Path) -> Path:
-    local_path.parent.mkdir(parents=True, exist_ok=True)
-    blob_client = blob_service.get_blob_client(container=CONTAINER, blob=blob_name)
-    with open(local_path, "wb") as f:
-        f.write(blob_client.download_blob().readall())
-    print(f"  ✓ Downloaded {blob_name} → {local_path}")
-    return local_path
-
-
-def upload_blob(local_path: Path, blob_name: str) -> None:
-    blob_client = blob_service.get_blob_client(container=CONTAINER, blob=blob_name)
-    with open(local_path, "rb") as f:
-        blob_client.upload_blob(f, overwrite=True)
-    print(f"  ✓ Uploaded {local_path} → {blob_name}")
-
-
-print("Downloading training data from Azure Blob ...")
-download_blob("training/all_ratings.csv",  Path("/kaggle/working/all_ratings.csv"))
-
-# Try to get warm-start champion weights
+# ── Cell 3: Fetch training data ───────────────────────────────────────────────
+ratings_file = Path("/kaggle/working/all_ratings.csv")
 WARM_START = False
-try:
-    download_blob("models/champion/champion_model.pkl", Path("/kaggle/working/champion_model.pkl"))
-    download_blob("models/champion/champion_meta.yaml", Path("/kaggle/working/champion_meta.yaml"))
-    WARM_START = True
-    print("✓ Champion model found — will use warm-start fine-tuning")
-except Exception:
-    print("No champion model — will train from scratch")
 
+if os.environ.get("AZURE_STORAGE_CONNECTION_STRING"):
+    try:
+        from azure.storage.blob import BlobServiceClient
+        CONTAINER    = os.environ.get("AZURE_STORAGE_CONTAINER", "mlops-artifacts")
+        CONN_STR     = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
+        blob_service = BlobServiceClient.from_connection_string(CONN_STR)
+
+        def download_blob(blob_name: str, local_path: Path) -> Path:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            blob_client = blob_service.get_blob_client(container=CONTAINER, blob=blob_name)
+            with open(local_path, "wb") as f:
+                f.write(blob_client.download_blob().readall())
+            print(f"  ✓ Downloaded {blob_name} → {local_path}")
+            return local_path
+
+        def upload_blob(local_path: Path, blob_name: str) -> None:
+            blob_client = blob_service.get_blob_client(container=CONTAINER, blob=blob_name)
+            with open(local_path, "rb") as f:
+                blob_client.upload_blob(f, overwrite=True)
+            print(f"  ✓ Uploaded {local_path} → {blob_name}")
+
+        print("Downloading training data from Azure Blob ...")
+        download_blob("training/all_ratings.csv", ratings_file)
+        try:
+            download_blob("models/champion/champion_model.pkl", Path("/kaggle/working/champion_model.pkl"))
+            WARM_START = True
+            print("✓ Champion model found for warm-start")
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"Azure Blob fetch failed ({e}) — falling back to MovieLens direct download")
+
+if not ratings_file.exists():
+    print("Downloading MovieLens ml-1m dataset directly from GroupLens ...")
+    url = "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
+    resp = requests.get(url, timeout=120)
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        zf.extractall("/kaggle/working/")
+
+    import pandas as pd
+    raw_ratings = pd.read_csv(
+        "/kaggle/working/ml-1m/ratings.dat",
+        sep="::",
+        names=["userId", "movieId", "rating", "timestamp"],
+        engine="python",
+    )
+    raw_ratings.to_csv(ratings_file, index=False)
+    print(f"✓ MovieLens ml-1m loaded: {len(raw_ratings):,} ratings → {ratings_file}")
 print("✓ Data ready")
 
 
