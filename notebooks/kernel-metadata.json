@@ -1,0 +1,14 @@
+{
+  "id": "PRIYANSHU_USERNAME/bert4rec-movie-recommender",
+  "title": "BERT4Rec Movie Recommender Fine-Tuning",
+  "code_file": "bert4rec_kaggle_train.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_docker_build": "false",
+  "enable_internet": "true",
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}

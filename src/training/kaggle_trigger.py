@@ -27,10 +27,14 @@ logger = logging.getLogger(__name__)
 KAGGLE_API = "https://www.kaggle.com/api/v1"
 
 
-def _auth() -> tuple[str, str]:
-    username = os.environ["KAGGLE_USERNAME"]
-    key      = os.environ["KAGGLE_KEY"]
-    return (username, key)
+def _get_request_kwargs() -> dict:
+    """Return requests kwargs (headers and/or auth) for Kaggle API calls."""
+    username = os.environ.get("KAGGLE_USERNAME", "")
+    key = os.environ.get("KAGGLE_KEY", "")
+
+    if key.startswith("KGAT_"):
+        return {"headers": {"Authorization": f"Bearer {key}"}}
+    return {"auth": (username, key)}
 
 
 def trigger_kernel(kernel_slug: str) -> str:
@@ -41,11 +45,11 @@ def trigger_kernel(kernel_slug: str) -> str:
     Returns the new kernel run version number.
     """
     owner, kernel = kernel_slug.split("/")
-    auth = _auth()
+    kwargs = _get_request_kwargs()
 
     # Get current kernel metadata to build push payload
     meta_url = f"{KAGGLE_API}/kernels/{owner}/{kernel}"
-    resp = requests.get(meta_url, auth=auth, timeout=30)
+    resp = requests.get(meta_url, timeout=30, **kwargs)
     resp.raise_for_status()
     meta = resp.json()
 
@@ -64,7 +68,7 @@ def trigger_kernel(kernel_slug: str) -> str:
         "kernelDataSources": meta.get("kernelDataSources", []),
         "categoryIds": [],
     }
-    resp = requests.post(push_url, auth=auth, json=payload, timeout=30)
+    resp = requests.post(push_url, json=payload, timeout=30, **kwargs)
     resp.raise_for_status()
     version = resp.json().get("currentRunningVersion", "unknown")
     logger.info("Kaggle kernel triggered: %s v%s", kernel_slug, version)
@@ -77,13 +81,13 @@ def poll_kernel(kernel_slug: str, timeout_seconds: int = 3600, poll_interval: in
     Returns True if completed successfully, False otherwise.
     """
     owner, kernel = kernel_slug.split("/")
-    auth = _auth()
+    kwargs = _get_request_kwargs()
     status_url = f"{KAGGLE_API}/kernels/{owner}/{kernel}"
     deadline = time.time() + timeout_seconds
 
     logger.info("Polling kernel %s (timeout: %ds) ...", kernel_slug, timeout_seconds)
     while time.time() < deadline:
-        resp = requests.get(status_url, auth=auth, timeout=30)
+        resp = requests.get(status_url, timeout=30, **kwargs)
         resp.raise_for_status()
         status = resp.json().get("currentRunningStatus", "unknown")
         logger.info("  Kernel status: %s", status)
