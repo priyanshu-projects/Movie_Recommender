@@ -4,9 +4,8 @@
 
 # ── Dataset ──────────────────────────────────────────────────────────────────
 dataset:
-  dev_dataset: "ml-latest-small"          # used locally for fast iteration
-  prod_dataset: "ml-1m"                   # used for realistic replay demo
-  dev_url: "https://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
+  dev_dataset: "ml-1m"                     # primary dataset
+  dev_url: "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
   prod_url: "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
   raw_dir: "data/raw"
   incoming_dir: "data/raw/incoming"
@@ -17,11 +16,9 @@ dataset:
 # ── Replay Controller ─────────────────────────────────────────────────────────
 replay:
   state_file: "data/replay/replay_state.json"
-  # Chunk size: number of days per batch released
-  batch_days: 90                           # ~3 months per batch for ml-latest-small
-  # For ml-1m, reduce to 14-30 days per batch (more batches available)
-  master_ratings_path: "data/raw/ml-latest-small/ratings.csv"
-  schedule_interval_days: 14              # Airflow triggers every 2 weeks
+  batch_days: 30                           # ~1 month per batch (ml-1m spans 2000-2003)
+  master_ratings_path: "data/raw/ml-1m/ratings.csv"
+  schedule_interval_days: 14              # Airflow / GitHub Actions every 2 weeks
 
 # ── Validation ────────────────────────────────────────────────────────────────
 validation:
@@ -89,8 +86,8 @@ api:
   port: 8000
   default_k: 10
   model_path: "models/champion_model.pkl"
-  movies_path: "data/raw/ml-latest-small/movies.csv"
-  ratings_path: "data/raw/ml-latest-small/ratings.csv"
+  movies_path: "data/raw/ml-1m/movies.csv"
+  ratings_path: "data/raw/ml-1m/ratings.csv"
 
 # ── Monitoring ────────────────────────────────────────────────────────────────
 monitoring:

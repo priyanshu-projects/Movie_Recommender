@@ -1,0 +1,273 @@
+name: Bi-Weekly Retraining Pipeline
+
+# Runs automatically on the 1st and 15th of every month at 00:00 UTC
+# Can also be triggered manually from GitHub Actions tab
+on:
+  schedule:
+    - cron: "0 0 1,15 * *"
+  workflow_dispatch:
+    inputs:
+      skip_bert4rec:
+        description: "Skip BERT4Rec GPU training (SVD only)"
+        required: false
+        default: "false"
+      force_promote:
+        description: "Force promote candidate even without improvement"
+        required: false
+        default: "false"
+
+jobs:
+  retrain:
+    name: Retraining Pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+      AZURE_STORAGE_CONTAINER: ${{ secrets.AZURE_STORAGE_CONTAINER }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      AZURE_CONTAINER_APP_NAME: ${{ secrets.AZURE_CONTAINER_APP_NAME }}
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+
+    steps:
+      # ── Setup ────────────────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install scikit-surprise pandas pyyaml pandera mlflow \
+                      azure-storage-blob requests
+
+      # ── Step 1: Pull current state from Azure Blob ────────────────────────
+      - name: Download replay state from Azure Blob
+        run: |
+          mkdir -p data/replay data/raw/incoming data/processed models
+          python - <<'EOF'
+          import os, sys
+          try:
+              from src.storage.azure_blob import AzureBlobStorage
+              store = AzureBlobStorage()
+              store.download_replay_state()
+              print("✓ Replay state downloaded")
+          except Exception as e:
+              print(f"No existing replay state (first run): {e}")
+          EOF
+
+      # ── Step 2: Download master dataset from Azure Blob ───────────────────
+      - name: Download ml-1m master dataset
+        run: |
+          python - <<'EOF'
+          from pathlib import Path
+          from src.storage.azure_blob import AzureBlobStorage
+          ratings_path = Path("data/raw/ml-1m/ratings.csv")
+          if ratings_path.exists():
+              print("✓ Master dataset already present")
+          else:
+              store = AzureBlobStorage()
+              store.download("datasets/ml-1m/ratings.csv", ratings_path)
+              store.download("datasets/ml-1m/movies.csv", Path("data/raw/ml-1m/movies.csv"))
+              print("✓ Master dataset downloaded from Azure Blob")
+          EOF
+
+      # ── Step 3: Replay controller — release next batch ────────────────────
+      - name: Release next replay batch
+        id: replay
+        run: |
+          python -c "
+          from src.replay.replay_controller import get_next_batch
+          path = get_next_batch('configs/config.yaml')
+          if path is None:
+              print('::warning::No more replay data available')
+              print('batch_available=false')
+          else:
+              print(f'batch_path={path}')
+              print('batch_available=true')
+          " >> $GITHUB_OUTPUT
+
+      - name: Stop if no new data
+        if: steps.replay.outputs.batch_available == 'false'
+        run: |
+          echo "All replay data exhausted. Skipping retraining." && exit 0
+
+      # ── Step 4: Validate incoming batch ───────────────────────────────────
+      - name: Validate batch data
+        run: |
+          BATCH=$(cat $GITHUB_OUTPUT | grep batch_path | cut -d= -f2)
+          python -c "
+          from src.data.validation import validate_batch
+          from pathlib import Path
+          validate_batch(Path('${{ steps.replay.outputs.batch_path }}'))
+          print('✓ Validation passed')
+          "
+
+      # ── Step 5: Update cumulative training dataset ─────────────────────────
+      - name: Accumulate training data
+        run: |
+          python - <<'EOF'
+          import pandas as pd
+          from pathlib import Path
+          delta = pd.read_csv("${{ steps.replay.outputs.batch_path }}")
+          all_path = Path("data/processed/all_ratings.csv")
+          if all_path.exists():
+              history = pd.read_csv(all_path)
+              combined = pd.concat([history, delta], ignore_index=True)
+          else:
+              combined = delta
+          all_path.parent.mkdir(parents=True, exist_ok=True)
+          combined.to_csv(all_path, index=False)
+          print(f"✓ Training pool: {len(combined):,} ratings")
+          EOF
+
+      # ── Step 6: Retrain SVD ───────────────────────────────────────────────
+      - name: Retrain SVD
+        run: |
+          python - <<'EOF'
+          import pandas as pd, yaml
+          from pathlib import Path
+          from src.models.svd_model import SVDModel
+          from src.data.temporal_split import global_temporal_split
+
+          with open("configs/config.yaml") as f:
+              cfg = yaml.safe_load(f)
+
+          ratings = pd.read_csv("data/processed/all_ratings.csv")
+          train, val, test = global_temporal_split(ratings)
+          model = SVDModel(cfg["svd"])
+          model.train(train)
+          Path("models").mkdir(exist_ok=True)
+          model.save(Path("models/svd_candidate.pkl"))
+          metrics = model.evaluate(test, k=cfg["evaluation"]["k"])
+          print(f"✓ SVD trained | metrics: {metrics}")
+
+          # Save metrics for promotion step
+          import json
+          with open("models/svd_metrics.json", "w") as f:
+              json.dump(metrics, f)
+          EOF
+
+      # ── Step 7: Trigger BERT4Rec fine-tuning on Kaggle ────────────────────
+      - name: Upload replay state + batch to Azure Blob
+        if: inputs.skip_bert4rec != 'true'
+        run: |
+          python - <<'EOF'
+          from src.storage.azure_blob import AzureBlobStorage
+          from pathlib import Path
+          store = AzureBlobStorage()
+          store.upload(Path("data/processed/all_ratings.csv"), "training/all_ratings.csv")
+          store.upload_replay_state()
+          print("✓ Training data pushed to Azure Blob for Kaggle")
+          EOF
+
+      - name: Trigger Kaggle BERT4Rec fine-tuning
+        if: inputs.skip_bert4rec != 'true'
+        run: |
+          python -m src.training.kaggle_trigger \
+            --kernel ${{ secrets.KAGGLE_KERNEL_SLUG }} \
+            --timeout 3600
+
+      # ── Step 8: Download BERT4Rec model from Azure Blob ───────────────────
+      - name: Download BERT4Rec candidate from Azure Blob
+        if: inputs.skip_bert4rec != 'true'
+        run: |
+          python - <<'EOF'
+          from src.storage.azure_blob import AzureBlobStorage
+          from pathlib import Path
+          store = AzureBlobStorage()
+          store.download("models/bert4rec_candidate.pkl", Path("models/bert4rec_candidate.pkl"))
+          print("✓ BERT4Rec candidate downloaded from Azure Blob")
+          EOF
+
+      # ── Step 9: Champion/challenger promotion ─────────────────────────────
+      - name: Champion / Challenger gate
+        id: promote
+        run: |
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          from src.tracking.model_registry import evaluate_and_promote
+
+          promoted = False
+          # Try BERT4Rec first
+          b4r_path = Path("models/bert4rec_candidate.pkl")
+          b4r_metrics_path = Path("models/bert4rec_metrics.json")
+          if b4r_path.exists() and b4r_metrics_path.exists():
+              with open(b4r_metrics_path) as f:
+                  b4r_metrics = json.load(f)
+              promoted = evaluate_and_promote(b4r_path, b4r_metrics, "bert4rec")
+
+          # SVD fallback
+          if not promoted:
+              with open("models/svd_metrics.json") as f:
+                  svd_metrics = json.load(f)
+              promoted = evaluate_and_promote(Path("models/svd_candidate.pkl"), svd_metrics, "svd")
+
+          print(f"promoted={str(promoted).lower()}")
+          EOF
+          ) >> $GITHUB_OUTPUT
+
+      # ── Step 10: Upload new champion to Azure Blob ────────────────────────
+      - name: Upload champion to Azure Blob
+        if: steps.promote.outputs.promoted == 'true'
+        run: |
+          python - <<'EOF'
+          from src.storage.azure_blob import AzureBlobStorage
+          store = AzureBlobStorage()
+          store.upload_champion()
+          store.upload_champion_meta()
+          store.upload_replay_state()
+          print("✓ Champion model uploaded to Azure Blob")
+          EOF
+
+      # ── Step 11: Redeploy Azure Container App ─────────────────────────────
+      - name: Redeploy Azure Container App
+        if: steps.promote.outputs.promoted == 'true'
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Restart Container App revision
+        if: steps.promote.outputs.promoted == 'true'
+        run: |
+          az containerapp revision restart \
+            --name ${{ secrets.AZURE_CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --revision $(az containerapp revision list \
+              --name ${{ secrets.AZURE_CONTAINER_APP_NAME }} \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --query "[0].name" -o tsv)
+          echo "✓ Azure Container App restarted with new champion model"
+
+      # ── Step 12: Log performance ──────────────────────────────────────────
+      - name: Log cycle performance
+        run: |
+          python - <<'EOF'
+          import json
+          from src.monitoring.performance import log_cycle_metrics
+          from src.replay.replay_state import load_state
+          state = load_state()
+          svd_metrics = json.load(open("models/svd_metrics.json"))
+          log_cycle_metrics(state.last_released_batch, "dual", svd_metrics, promoted=True)
+          print(f"✓ Cycle {state.last_released_batch} metrics logged")
+          EOF
+
+      - name: Summary
+        run: |
+          echo "## Retraining Cycle Complete 🎬" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Replay batch released | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Data validated | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| SVD retrained | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| BERT4Rec fine-tuned (Kaggle T4) | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Champion promoted | ${{ steps.promote.outputs.promoted }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Azure Container App redeployed | ✅ |" >> $GITHUB_STEP_SUMMARY

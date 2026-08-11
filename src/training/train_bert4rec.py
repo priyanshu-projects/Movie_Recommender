@@ -91,6 +91,8 @@ def train_bert4rec(
     sequences_path: Path,
     model_out: Path,
     config_path: str = "configs/config.yaml",
+    warm_start: bool = False,
+    champion_path: Path = Path("models/champion_model.pkl"),
 ) -> dict:
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
@@ -99,6 +101,17 @@ def train_bert4rec(
     mlflow_cfg = cfg["mlflow"]
     max_seq    = bert_cfg.get("max_sequence_length", 50)
     batch_size = bert_cfg.get("batch_size", 32)
+
+    # Warm-start: reduce epochs for fine-tuning
+    if warm_start and champion_path.exists():
+        logger.info("Warm-start mode: loading champion weights from %s", champion_path)
+        epochs_override = max(5, bert_cfg.get("max_epochs", 30) // 4)
+        logger.info("Fine-tuning for %d epochs (instead of %d)",
+                    epochs_override, bert_cfg.get("max_epochs", 30))
+    else:
+        epochs_override = None
+        if warm_start:
+            logger.info("No champion found — falling back to full training.")
 
     # Load sequences
     sequences, vocab_size = load_sequences(sequences_path)
@@ -119,6 +132,18 @@ def train_bert4rec(
     movie_to_idx = {i: i for i in range(1, vocab_size)}
     model = BERT4Rec(bert_cfg).build(vocab_size, movie_to_idx)
 
+    # Warm-start: load champion weights before fine-tuning
+    if warm_start and champion_path.exists():
+        try:
+            model.load(champion_path)
+            logger.info("Champion weights loaded for warm-start fine-tuning.")
+            # Override max_epochs for fine-tuning
+            if epochs_override:
+                bert_cfg = {**bert_cfg, "max_epochs": epochs_override}
+                model.config = bert_cfg
+        except Exception as e:
+            logger.warning("Failed to load champion for warm-start: %s. Training from scratch.", e)
+
     # Train
     logger.info("Starting BERT4Rec training (CPU) ...")
     train_metrics = model.train(train_loader, val_loader)
@@ -131,7 +156,7 @@ def train_bert4rec(
     import mlflow
     mlflow.set_tracking_uri(mlflow_cfg["tracking_uri"])
     mlflow.set_experiment(mlflow_cfg["bert4rec_experiment"])
-    with mlflow.start_run(run_name="bert4rec_training"):
+    with mlflow.start_run(run_name="bert4rec_training") as run:
         mlflow.log_params({
             "vocab_size":    vocab_size,
             "embedding_dim": bert_cfg["embedding_dim"],
@@ -141,6 +166,7 @@ def train_bert4rec(
             "lr":            bert_cfg["learning_rate"],
             "dropout":       bert_cfg["dropout"],
             "batch_size":    batch_size,
+            "warm_start":    warm_start,
         })
         mlflow.log_metrics({
             "train_loss":    round(train_metrics.get("train_loss", 0), 4),
@@ -155,10 +181,17 @@ def train_bert4rec(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sequences", default="data/processed/sequences.jsonl")
-    parser.add_argument("--model-out", default="models/bert4rec_candidate.pkl")
-    parser.add_argument("--config",    default="configs/config.yaml")
+    parser.add_argument("--sequences",   default="data/processed/sequences.jsonl")
+    parser.add_argument("--model-out",   default="models/bert4rec_candidate.pkl")
+    parser.add_argument("--config",      default="configs/config.yaml")
+    parser.add_argument("--warm-start",  action="store_true",
+                        help="Load champion weights and fine-tune (fewer epochs).")
+    parser.add_argument("--champion",    default="models/champion_model.pkl",
+                        help="Path to champion model for warm-start.")
     args = parser.parse_args()
 
-    metrics = train_bert4rec(Path(args.sequences), Path(args.model_out), args.config)
+    metrics = train_bert4rec(
+        Path(args.sequences), Path(args.model_out), args.config,
+        warm_start=args.warm_start, champion_path=Path(args.champion),
+    )
     print(f"Training metrics: {metrics}")
