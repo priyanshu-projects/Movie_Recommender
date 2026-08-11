@@ -27,15 +27,15 @@ WHAT THIS SCRIPT DOES:
 
 # ── Cell 1: Install dependencies ─────────────────────────────────────────────
 import subprocess
-subprocess.run([
-    "pip", "install", "-q",
-    "azure-storage-blob",
-    "scikit-surprise",
-    "pandera",
-    "pyyaml",
-    "mlflow",
-], check=True)
-print("✓ Dependencies installed")
+try:
+    subprocess.run([
+        "pip", "install", "-q",
+        "azure-storage-blob",
+        "pandera",
+    ], check=False)
+    print("✓ Optional cloud dependencies checked")
+except Exception as e:
+    print(f"Continuing with Kaggle environment: {e}")
 
 
 # ── Cell 2: Kaggle secrets → env vars ────────────────────────────────────────
