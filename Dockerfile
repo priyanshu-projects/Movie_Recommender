@@ -12,12 +12,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project source
+# Copy project source and config
 COPY src/ ./src/
+COPY configs/ ./configs/
 COPY models/ ./models/
 COPY data/raw/ ./data/raw/
 
 # Expose FastAPI port
 EXPOSE 8000
 
-CMD ["uvicorn", "src.serving.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

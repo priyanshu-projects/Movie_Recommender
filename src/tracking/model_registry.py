@@ -33,17 +33,28 @@ def load_champion_meta() -> dict | None:
         return yaml.safe_load(f)
 
 
+def _to_native(val):
+    if hasattr(val, "item"):
+        return val.item()
+    if isinstance(val, dict):
+        return {k: _to_native(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_to_native(v) for v in val]
+    return val
+
+
 def save_champion(model_path: Path, metrics: dict, model_type: str) -> None:
     """Copy candidate model to champion path and save metadata."""
     import shutil
     CHAMPION_PATH.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(model_path, CHAMPION_PATH)
 
-    meta = {"model_type": model_type, "metrics": metrics}
+    clean_metrics = _to_native(metrics)
+    meta = {"model_type": model_type, "metrics": clean_metrics}
     with open(CHAMPION_META_PATH, "w") as f:
         yaml.dump(meta, f)
 
-    logger.info("New champion promoted: %s | metrics: %s", model_type, metrics)
+    logger.info("New champion promoted: %s | metrics: %s", model_type, clean_metrics)
 
 
 def evaluate_and_promote(

@@ -81,7 +81,7 @@ def get_next_batch(config_path: str = "configs/config.yaml") -> Path | None:
 
     # --- Slice next N days ---
     batch_start = remaining["datetime"].min()
-    batch_end = batch_start + pd.Timedelta(days=batch_days)
+    batch_end = batch_start + pd.Timedelta(days=int(batch_days))
     batch = remaining[remaining["datetime"] < batch_end].copy()
 
     if batch.empty:

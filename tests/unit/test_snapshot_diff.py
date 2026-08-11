@@ -10,7 +10,7 @@ import pytest
 from pathlib import Path
 import tempfile
 
-from src.delta.snapshot_diff import compute_diff
+from src.ingestion.snapshot_diff import compute_diff
 
 
 def _write_csv(df: pd.DataFrame, path: Path) -> None:

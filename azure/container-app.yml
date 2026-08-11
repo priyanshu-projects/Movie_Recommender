@@ -1,0 +1,30 @@
+# Azure Container App Template
+# Deploy using Azure CLI:
+#   az containerapp create --name $APP_NAME --resource-group $RESOURCE_GROUP --yaml azure/container-app.yml
+
+location: eastus
+type: Microsoft.App/containerApps
+properties:
+  managedEnvironmentId: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroup}/providers/Microsoft.App/managedEnvironments/{environmentName}
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 8000
+      transport: Auto
+      allowInsecure: false
+    secrets:
+      - name: azure-storage-connection-string
+        value: "YOUR_AZURE_STORAGE_CONNECTION_STRING"
+  template:
+    containers:
+      - image: ghcr.io/priyanshu-projects/movie_recommender:latest
+        name: movie-recommender-api
+        resources:
+          cpu: 0.5
+          memory: 1.0Gi
+        env:
+          - name: AZURE_STORAGE_CONNECTION_STRING
+            secretRef: azure-storage-connection-string
+          - name: AZURE_STORAGE_CONTAINER
+            value: mlops-artifacts
