@@ -10,157 +10,78 @@ Endpoints:
 """
 
 import logging
-import pickle
 from pathlib import Path
+from contextlib import asynccontextmanager
 
-import pandas as pd
 import yaml
 from fastapi import FastAPI, HTTPException
 
+from src.inference.recommender import Recommender, CHAMPION_META
+
 logger = logging.getLogger(__name__)
+
+recommender: Recommender | None = None
+champion_meta: dict = {}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global recommender, champion_meta
+    try:
+        recommender = Recommender("configs/config.yaml").load()
+        logger.info("Champion model loaded successfully via Recommender.")
+    except Exception as e:
+        logger.warning("Could not load champion model at startup: %s", e)
+        recommender = None
+
+    if CHAMPION_META.exists():
+        try:
+            with open(CHAMPION_META) as f:
+                champion_meta = yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.warning("Could not load champion metadata: %s", e)
+
+    yield
+
 
 app = FastAPI(
     title="Movie Recommender API",
     description="MLOps Movie Recommendation System — Champion Model",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
-# ── State (loaded at startup) ─────────────────────────────────────────────────
-
-_model = None
-_movies_df: pd.DataFrame | None = None
-_ratings_df: pd.DataFrame | None = None
-_model_meta: dict = {}
-
-
-def _load_config(path: str = "configs/config.yaml") -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
-
-
-@app.on_event("startup")
-def startup():
-    global _model, _movies_df, _ratings_df, _model_meta
-    cfg = _load_config()
-    api_cfg = cfg["api"]
-
-    # Load champion model
-    model_path = Path(api_cfg["model_path"])
-    if model_path.exists():
-        with open(model_path, "rb") as f:
-            _model = pickle.load(f)
-        logger.info("Champion model loaded from %s", model_path)
-    else:
-        logger.warning("No champion model found at %s — /recommend will return 404", model_path)
-
-    # Load champion meta
-    meta_path = Path("models/champion_meta.yaml")
-    if meta_path.exists():
-        with open(meta_path) as f:
-            _model_meta = yaml.safe_load(f)
-
-    # Load movies
-    movies_path = Path(api_cfg["movies_path"])
-    if movies_path.exists():
-        _movies_df = pd.read_csv(movies_path)
-
-    # Load ratings (for seen-movie filtering)
-    ratings_path = Path(api_cfg["ratings_path"])
-    if ratings_path.exists():
-        _ratings_df = pd.read_csv(ratings_path)
-
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_loaded": _model is not None}
+    return {
+        "status": "ok",
+        "model_loaded": recommender is not None and recommender.model is not None,
+    }
 
 
 @app.get("/model")
 def model_info():
+    if recommender is None:
+        return {"status": "no model loaded", "metrics": {}}
     return {
-        "model_type": _model_meta.get("model_type", "unknown"),
-        "metrics": _model_meta.get("metrics", {}),
+        "model_type": recommender.model_type,
+        "metrics": champion_meta.get("metrics", {}),
     }
 
 
 @app.get("/recommend/{user_id}")
 def recommend(user_id: int, k: int = 10):
-    if _model is None:
+    if recommender is None or recommender.model is None:
         raise HTTPException(status_code=503, detail="No champion model loaded.")
 
-    model_type = _model_meta.get("model_type", "svd")
-
-    if model_type == "svd":
-        return _recommend_svd(user_id, k)
-    elif model_type == "bert4rec":
-        return _recommend_bert4rec(user_id, k)
-    else:
-        raise HTTPException(status_code=500, detail=f"Unknown model type: {model_type}")
-
-
-def _recommend_svd(user_id: int, k: int) -> dict:
-    """Generate top-K recommendations using the SVD model."""
-    if _ratings_df is None or _movies_df is None:
-        raise HTTPException(status_code=503, detail="Rating data not loaded.")
-
-    seen = set(_ratings_df[_ratings_df["userId"] == user_id]["movieId"].tolist())
-    all_movies = _movies_df["movieId"].tolist()
-    unseen = [m for m in all_movies if m not in seen]
-
-    predictions = [(_model.predict(user_id, m) if hasattr(_model, "predict") else
-                    type("P", (), {"est": 0.0})()) for m in unseen]
-    scored = sorted(
-        [(m, p.est) for m, p in zip(unseen, predictions)],
-        key=lambda x: x[1], reverse=True,
-    )[:k]
-
-    movie_info = _movies_df.set_index("movieId")
-    return {
-        "user_id": user_id,
-        "model_type": "svd",
-        "recommendations": [
-            {
-                "movieId": m,
-                "predicted_rating": round(score, 3),
-                "title": movie_info.loc[m, "title"] if m in movie_info.index else "Unknown",
-                "genres": movie_info.loc[m, "genres"] if m in movie_info.index else "Unknown",
-            }
-            for m, score in scored
-        ],
-    }
-
-
-def _recommend_bert4rec(user_id: int, k: int) -> dict:
-    """Generate top-K recommendations using the BERT4Rec model."""
-    if _ratings_df is None:
-        raise HTTPException(status_code=503, detail="Rating data not loaded.")
-
-    user_ratings = _ratings_df[_ratings_df["userId"] == user_id].sort_values("timestamp")
-    if user_ratings.empty:
-        raise HTTPException(status_code=404, detail=f"No history for user {user_id}.")
-
-    movie_to_idx = _model.movie_to_idx
-    sequence = [
-        movie_to_idx[m] for m in user_ratings["movieId"].tolist()
-        if m in movie_to_idx
-    ][-50:]  # last 50 interactions
-
-    recs = _model.recommend(user_id, n=k, user_sequence=sequence)
-    movie_info = _movies_df.set_index("movieId") if _movies_df is not None else None
-
-    return {
-        "user_id": user_id,
-        "model_type": "bert4rec",
-        "recommendations": [
-            {
-                "movieId": r["movieId"],
-                "score": round(r["score"], 4),
-                "title": (movie_info.loc[r["movieId"], "title"]
-                          if movie_info is not None and r["movieId"] in movie_info.index
-                          else "Unknown"),
-            }
-            for r in recs
-        ],
-    }
+    try:
+        recs = recommender.recommend(user_id=user_id, n=k)
+        return {
+            "user_id": user_id,
+            "model_type": recommender.model_type,
+            "recommendations": recs,
+        }
+    except Exception as e:
+        logger.error("Error generating recommendations for user %d: %s", user_id, e)
+        raise HTTPException(status_code=500, detail=str(e))
