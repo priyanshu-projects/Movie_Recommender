@@ -1,0 +1,98 @@
+# configs/config.yaml
+# Single source of truth for all project settings.
+# Override with environment variables where secrets are needed.
+
+# ── Dataset ──────────────────────────────────────────────────────────────────
+dataset:
+  dev_dataset: "ml-latest-small"          # used locally for fast iteration
+  prod_dataset: "ml-1m"                   # used for realistic replay demo
+  dev_url: "https://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
+  prod_url: "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
+  raw_dir: "data/raw"
+  incoming_dir: "data/raw/incoming"
+  processed_dir: "data/processed"
+  deltas_dir: "data/processed/deltas"
+  replay_dir: "data/replay"
+
+# ── Replay Controller ─────────────────────────────────────────────────────────
+replay:
+  state_file: "data/replay/replay_state.json"
+  # Chunk size: number of days per batch released
+  batch_days: 90                           # ~3 months per batch for ml-latest-small
+  # For ml-1m, reduce to 14-30 days per batch (more batches available)
+  master_ratings_path: "data/raw/ml-latest-small/ratings.csv"
+  schedule_interval_days: 14              # Airflow triggers every 2 weeks
+
+# ── Validation ────────────────────────────────────────────────────────────────
+validation:
+  min_rating: 0.5
+  max_rating: 5.0
+  required_columns: ["userId", "movieId", "rating", "timestamp"]
+
+# ── Sequence Builder (BERT4Rec) ───────────────────────────────────────────────
+sequences:
+  min_rating_threshold: 3.5              # only interactions >= this count as positive
+  max_sequence_length: 50
+  min_sequence_length: 5                 # users with fewer interactions are skipped
+  mask_probability: 0.20
+
+# ── SVD Model ─────────────────────────────────────────────────────────────────
+svd:
+  n_factors: 50
+  n_epochs: 20
+  lr_all: 0.005
+  reg_all: 0.02
+
+# ── BERT4Rec Model ────────────────────────────────────────────────────────────
+bert4rec:
+  embedding_dim: 64
+  hidden_dim: 64
+  num_layers: 2
+  num_attention_heads: 2
+  feed_forward_dim: 256
+  max_sequence_length: 50
+  dropout: 0.2
+  attention_dropout: 0.2
+  mask_probability: 0.20
+  # Training
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  batch_size: 32
+  max_epochs: 30
+  early_stopping_patience: 5
+
+# ── Evaluation ────────────────────────────────────────────────────────────────
+evaluation:
+  k: 10                                  # top-K for all ranking metrics
+  relevant_threshold: 3.5               # SVD: rating >= this counts as relevant
+  # Promotion: new model must beat champion by at least this delta
+  promotion_min_ndcg_delta: 0.001       # BERT4Rec primary metric
+  promotion_min_rmse_delta: 0.005       # SVD primary metric
+
+# ── Temporal Split ────────────────────────────────────────────────────────────
+split:
+  train_fraction: 0.80
+  val_fraction: 0.10
+  # test_fraction = 1 - train - val = 0.10
+
+# ── MLflow ────────────────────────────────────────────────────────────────────
+mlflow:
+  tracking_uri: "sqlite:///mlflow.db"
+  svd_experiment: "movielens-svd"
+  bert4rec_experiment: "movielens-bert4rec"
+  model_name_svd: "movielens-svd-champion"
+  model_name_bert4rec: "movielens-bert4rec-champion"
+
+# ── FastAPI ───────────────────────────────────────────────────────────────────
+api:
+  host: "0.0.0.0"
+  port: 8000
+  default_k: 10
+  model_path: "models/champion_model.pkl"
+  movies_path: "data/raw/ml-latest-small/movies.csv"
+  ratings_path: "data/raw/ml-latest-small/ratings.csv"
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+monitoring:
+  drift_report_dir: "data/drift_reports"
+  drift_threshold: 0.5                   # Evidently dataset drift share threshold
