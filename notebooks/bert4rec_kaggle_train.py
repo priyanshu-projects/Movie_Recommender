@@ -93,10 +93,31 @@ if os.environ.get("AZURE_STORAGE_CONNECTION_STRING"):
     except Exception as e:
         print(f"Azure Blob fetch skipped ({e})")
 
-# 2. Guarantee download of ml-1m dataset using urllib with User-Agent
+# 2. Read pre-mounted Kaggle Input dataset (shikharg97/movielens-1m)
+if not ratings_file.exists():
+    kaggle_inputs = list(Path("/kaggle/input").glob("**/*ratings*"))
+    print(f"Searching Kaggle input paths: {kaggle_inputs}")
+    if kaggle_inputs:
+        target_input = kaggle_inputs[0]
+        import pandas as pd
+        print(f"✓ Loading pre-mounted Kaggle dataset: {target_input}")
+        if str(target_input).endswith(".dat"):
+            raw_ratings = pd.read_csv(
+                target_input,
+                sep="::",
+                names=["userId", "movieId", "rating", "timestamp"],
+                engine="python",
+                encoding="latin-1",
+            )
+        else:
+            raw_ratings = pd.read_csv(target_input)
+        raw_ratings.to_csv(ratings_file, index=False)
+        print(f"✓ Loaded {len(raw_ratings):,} ratings → {ratings_file}")
+
+# 3. HTTP download fallback
 if not ratings_file.exists():
     import io, zipfile, urllib.request, pandas as pd
-    print("Downloading MovieLens ml-1m dataset from GroupLens (urllib + User-Agent) ...")
+    print("Downloading MovieLens ml-1m dataset from GroupLens ...")
     url = "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
     with urllib.request.urlopen(req, timeout=120) as response:
