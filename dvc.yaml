@@ -1,0 +1,48 @@
+stages:
+  download:
+    cmd: python -m src.ingestion.movielens_fetcher
+    deps:
+      - src/ingestion/movielens_fetcher.py
+    outs:
+      - data/raw/
+
+  diff:
+    cmd: >
+      python -m src.delta.snapshot_diff
+        --new data/raw/ml-latest-small/ratings.csv
+        --snapshot data/snapshots/ratings_snapshot.csv
+        --out data/diffs/ratings_diff.csv
+    deps:
+      - src/delta/snapshot_diff.py
+      - data/raw/ml-latest-small/ratings.csv
+    outs:
+      - data/diffs/ratings_diff.csv
+    params:
+      - data/snapshots/ratings_snapshot.csv
+
+  preprocess:
+    cmd: >
+      python -m src.preprocessing.build_matrix
+        --ratings data/raw/ml-latest-small/ratings.csv
+        --movies  data/raw/ml-latest-small/movies.csv
+        --out     data/processed/interactions.csv
+    deps:
+      - src/preprocessing/build_matrix.py
+      - data/raw/ml-latest-small/ratings.csv
+      - data/raw/ml-latest-small/movies.csv
+    outs:
+      - data/processed/interactions.csv
+
+  train:
+    cmd: >
+      python -m src.training.train_svd
+        --interactions data/processed/interactions.csv
+        --model-out    models/svd_model.pkl
+    deps:
+      - src/training/train_svd.py
+      - data/processed/interactions.csv
+    outs:
+      - models/svd_model.pkl
+    metrics:
+      - mlflow_tracking/metrics.json:
+          cache: false

@@ -1,0 +1,57 @@
+version: "3.8"
+
+# Local development stack: Airflow + FastAPI + MLflow UI
+# Usage: docker compose up
+
+services:
+
+  # ── FastAPI recommendation server ─────────────────────────────────────────
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    environment:
+      - MODEL_PATH=models/svd_model.pkl
+      - MOVIES_PATH=data/raw/ml-latest-small/movies.csv
+      - RATINGS_PATH=data/raw/ml-latest-small/ratings.csv
+
+  # ── MLflow tracking server ────────────────────────────────────────────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.13.0
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow_tracking:/mlflow
+    command: >
+      mlflow server
+        --backend-store-uri sqlite:///mlflow/mlflow.db
+        --default-artifact-root /mlflow/artifacts
+        --host 0.0.0.0
+        --port 5000
+
+  # ── Airflow (standalone, single-container — fine for local dev) ────────────
+  airflow:
+    image: apache/airflow:2.9.3-python3.11
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./data:/opt/airflow/data
+      - ./models:/opt/airflow/models
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    command: >
+      bash -c "
+        airflow db migrate &&
+        airflow users create --username admin --password admin
+          --firstname Admin --lastname User
+          --role Admin --email admin@example.com &&
+        airflow webserver &
+        airflow scheduler
+      "

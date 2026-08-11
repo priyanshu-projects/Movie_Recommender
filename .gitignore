@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Data (tracked by DVC, not Git)
+data/raw/
+data/processed/
+data/diffs/
+data/snapshots/
+models/
+
+# MLflow
+mlflow_tracking/
+mlflow.db
+mlruns/
+
+# DVC
+.dvc/cache/
+.dvc/tmp/
+
+# Airflow
+airflow.db
+airflow/logs/
+
+# Env
+.env
+*.env
+
+# OS
+.DS_Store
