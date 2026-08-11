@@ -60,28 +60,8 @@ except Exception as e:
 ratings_file = Path("/kaggle/working/all_ratings.csv")
 WARM_START = False
 
-# 1. Check pre-mounted Kaggle Dataset sources (0s latency, no network needed!)
-kaggle_inputs = list(Path("/kaggle/input").glob("**/ratings.dat")) + list(Path("/kaggle/input").glob("**/ratings.csv"))
-if kaggle_inputs:
-    print(f"✓ Found pre-mounted Kaggle dataset: {kaggle_inputs[0]}")
-    import pandas as pd
-    try:
-        if str(kaggle_inputs[0]).endswith(".dat"):
-            raw_ratings = pd.read_csv(
-                kaggle_inputs[0],
-                sep="::",
-                names=["userId", "movieId", "rating", "timestamp"],
-                engine="python",
-            )
-        else:
-            raw_ratings = pd.read_csv(kaggle_inputs[0])
-        raw_ratings.to_csv(ratings_file, index=False)
-        print(f"✓ Loaded {len(raw_ratings):,} ratings from Kaggle input dataset!")
-    except Exception as e:
-        print(f"Could not load pre-mounted dataset ({e}), trying cloud storage...")
-
-# 2. Check Azure Blob Storage if configured
-if not ratings_file.exists() and os.environ.get("AZURE_STORAGE_CONNECTION_STRING"):
+# 1. Check Azure Blob Storage if connection string present
+if os.environ.get("AZURE_STORAGE_CONNECTION_STRING"):
     try:
         from azure.storage.blob import BlobServiceClient
         CONTAINER    = os.environ.get("AZURE_STORAGE_CONTAINER", "mlops-artifacts")
@@ -111,17 +91,18 @@ if not ratings_file.exists() and os.environ.get("AZURE_STORAGE_CONNECTION_STRING
         except Exception:
             pass
     except Exception as e:
-        print(f"Azure Blob fetch failed ({e}) — falling back to MovieLens direct download")
+        print(f"Azure Blob fetch skipped ({e})")
 
-# 3. Direct HTTP download fallback
+# 2. Guarantee download of ml-1m dataset using urllib with User-Agent
 if not ratings_file.exists():
-    print("Downloading MovieLens ml-1m ratings from GroupLens with browser headers ...")
-    url_gl = "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    resp = requests.get(url_gl, headers=headers, timeout=120)
-    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+    import io, zipfile, urllib.request, pandas as pd
+    print("Downloading MovieLens ml-1m dataset from GroupLens (urllib + User-Agent) ...")
+    url = "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+    with urllib.request.urlopen(req, timeout=120) as response:
+        content = response.read()
+    with zipfile.ZipFile(io.BytesIO(content)) as zf:
         zf.extractall("/kaggle/working/")
-    import pandas as pd
     raw_ratings = pd.read_csv(
         "/kaggle/working/ml-1m/ratings.dat",
         sep="::",
@@ -130,6 +111,7 @@ if not ratings_file.exists():
     )
     raw_ratings.to_csv(ratings_file, index=False)
     print(f"✓ MovieLens ml-1m loaded: {len(raw_ratings):,} ratings → {ratings_file}")
+
 print("✓ Data ready")
 
 
