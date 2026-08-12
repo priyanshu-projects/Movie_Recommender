@@ -2,7 +2,7 @@
 notebooks/bert4rec_kaggle_train.py
 
 BERT4Rec Training Notebook — Kaggle T4 x2 GPU
-Dataset: MovieLens 32M (ml-latest full, ~87K movies, 200K users)
+Dataset: MovieLens 32M (ml-latest full, ~87K movies, users vary after filtering)
 Filter:  Movies released 1970 or later only
 Epochs:  15 (30M ratings = equivalent learning to 40 epochs on ml-1m)
 
@@ -256,7 +256,7 @@ def build_sequences(ratings_df: pd.DataFrame, cfg: dict):
 
     grouped = ratings_df.groupby("userId", sort=False)
     n_users = len(grouped)
-    print(f"Building sequences for {n_users:,} users...")
+    print(f"Building sequences for {n_users:,} users (after 1970+ and quality filters)...")
 
     for i, (uid, group) in enumerate(grouped):
         movie_ids = group["movieId"].tolist()
