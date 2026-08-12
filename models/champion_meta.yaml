@@ -1,0 +1,6 @@
+metrics:
+  best_val_loss: 6.9377
+  ndcg@10: 0.845
+  precision@10: 0.852
+  recall@10: 0.468
+model_type: bert4rec
