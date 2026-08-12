@@ -9,7 +9,7 @@
   "enable_docker_build": false,
   "enable_internet": true,
   "dataset_sources": [
-    "shikharg97/movielens-1m"
+    "justsahil/movielens-32m"
   ],
   "kernel_sources": [],
   "competition_sources": []
