@@ -153,6 +153,7 @@ CONFIG = {
         "weight_decay":           0.01,
         "batch_size":             64,      # 64 batch size fits 54K vocab in GPU VRAM
         "gradient_accumulation_steps": 4,  # Effective batch = 256 (64 x 4)
+        "max_epochs":             5 if WARM_START else 15,
         "early_stopping_patience": 4,
     },
     "sequences": {
