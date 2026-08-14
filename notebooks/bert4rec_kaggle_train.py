@@ -236,8 +236,21 @@ gc.collect()
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device} | CUDA GPUs: {torch.cuda.device_count()}")
+def get_safe_device():
+    if torch.cuda.is_available():
+        try:
+            # Test a small dummy tensor operation on GPU to verify compute compatibility
+            t = torch.zeros(10, device="cuda")
+            _ = (t + 1).cpu()
+            print(f"✓ CUDA GPU verified: {torch.cuda.get_device_name(0)}")
+            return torch.device("cuda")
+        except Exception as e:
+            print(f"⚠️ CUDA present but incompatible with PyTorch ({e}) — falling back to CPU")
+            return torch.device("cpu")
+    print("Device: CPU")
+    return torch.device("cpu")
+
+device = get_safe_device()
 
 MAX_SEQ = CONFIG["bert4rec"]["max_sequence_length"]
 
