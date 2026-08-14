@@ -151,8 +151,8 @@ CONFIG = {
         "mask_probability":       0.20,
         "learning_rate":          0.0005,
         "weight_decay":           0.01,
-        "batch_size":             256,
-        "max_epochs":             5 if WARM_START else 15,
+        "batch_size":             64,      # 64 batch size fits 54K vocab in GPU VRAM
+        "gradient_accumulation_steps": 4,  # Effective batch = 256 (64 x 4)
         "early_stopping_patience": 4,
     },
     "sequences": {
@@ -338,6 +338,7 @@ import time
 cfg        = CONFIG["bert4rec"]
 optimizer  = AdamW(model.parameters(), lr=cfg["learning_rate"], weight_decay=cfg["weight_decay"])
 max_epochs = cfg["max_epochs"]
+accum_steps = cfg.get("gradient_accumulation_steps", 4)
 scheduler  = CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=1, eta_min=1e-6)
 criterion  = nn.CrossEntropyLoss(ignore_index=-100)
 patience   = cfg["early_stopping_patience"]
@@ -347,7 +348,7 @@ patience_counter = 0
 best_state       = None
 history          = []
 
-print(f"\nStarting training: {max_epochs} epochs | device: {device}")
+print(f"\nStarting training: {max_epochs} epochs | device: {device} | batch_size: {BATCH} (accum: {accum_steps})")
 print("=" * 70)
 
 for epoch in range(1, max_epochs + 1):
@@ -355,17 +356,26 @@ for epoch in range(1, max_epochs + 1):
     model.train()
     total_loss = 0.0
     n_batches  = 0
-    for batch in train_loader:
+    optimizer.zero_grad(set_to_none=True)
+    
+    for step, batch in enumerate(train_loader):
         masked = batch["masked_sequence"].to(device, non_blocking=True)
         labels = batch["labels"].to(device, non_blocking=True)
-        optimizer.zero_grad(set_to_none=True)
         logits = model(masked).view(-1, vocab_size)
         loss   = criterion(logits, labels.view(-1))
+        
+        # Scale loss for gradient accumulation
+        loss = loss / accum_steps
         loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
-        total_loss += loss.item()
+        
+        if (step + 1) % accum_steps == 0 or (step + 1) == len(train_loader):
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            
+        total_loss += loss.item() * accum_steps
         n_batches  += 1
+        
     scheduler.step()
     avg_train = total_loss / n_batches
 
