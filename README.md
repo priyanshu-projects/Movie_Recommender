@@ -1,63 +1,72 @@
-# MLOps Movie Recommendation System
+# 🎬 Movie Mind Reader & Recommender Engine
 
-> **Production-grade MLOps portfolio project** — Dual-model sequential recommendation architecture (SVD + BERT4Rec) built on 1,000,000 MovieLens ratings, with automated continuous replay, Kaggle T4 GPU fine-tuning, Azure Blob artifact storage, and Azure Container App serving.
+[![Live Demo](https://img.shields.io/badge/Live_App-Streamlit-E50914?style=for-the-badge&logo=streamlit)](http://3.111.33.59:8501)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python)](https://python.org)
+[![PyTorch](https://img.shields.io/badge/PyTorch-BERT4Rec-EE4C2C?style=for-the-badge&logo=pytorch)](https://pytorch.org)
+[![AWS](https://img.shields.io/badge/AWS-S3_%26_EC2-FF9900?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com)
 
----
+An interactive movie recommender app and MLOps system that uses deep learning to guess which movie you're secretly thinking of based on your watch history.
 
-## 🏗️ Architecture Overview
-
-```
-                               ┌───────────────────────────┐
-                               │   Immutable Master Data   │
-                               │  data/raw/ml-1m/ (1M rows)│
-                               └─────────────┬─────────────┘
-                                             │
-                                   Replay Controller
-                             (releases N-day batches)
-                                             │
-                                             ▼
-                               ┌───────────────────────────┐
-                               │     Data Validation       │
-                               │   (pandera schema checks) │
-                               └─────────────┬─────────────┘
-                                             │
-                       ┌─────────────────────┴─────────────────────┐
-                       ▼                                           ▼
-             ┌──────────────────┐                        ┌──────────────────┐
-             │  SVD Retraining  │                        │ Sequence Builder │
-             │  (scikit-surprise│                        │ (BERT4Rec masks) │
-             │   local / CPU)   │                        └────────┬─────────┘
-             └────────┬─────────┘                                 │
-                      │                                    Kaggle T4 GPU
-                      │                              (warm-start fine-tuning)
-                      │                                           │
-                      └─────────────────────┬─────────────────────┘
-                                            │
-                                            ▼
-                               ┌───────────────────────────┐
-                               │ Champion/Challenger Gate  │
-                               │  (MLflow + model_registry)│
-                               └────────────┬──────────────┘
-                                            │
-                                            ▼
-                               ┌───────────────────────────┐
-                               │   Azure Container Apps    │
-                               │   FastAPI /recommend API  │
-                               └───────────────────────────┘
-```
+👉 **[Try the Live Web App Here](http://3.111.33.59:8501)**
 
 ---
 
-## ✨ Key Features
+## 🎮 The "Movie Mind Reader" Game
 
-- **Continuous Chronological Replay**: Simulates real production data streams by periodically releasing timestamped chunks from an immutable master dataset (`ml-1m`).
-- **Dual-Model Engine**:
-  - **SVD (Matrix Factorization)**: Fast collaborative filtering baseline.
-  - **BERT4Rec (Transformer Encoder)**: Sequential recommendation model with bidirectional attention, masked item prediction, and automatic CUDA/CPU detection.
-- **Warm-Start GPU Fine-Tuning**: BERT4Rec fine-tunes on Kaggle T4 GPU (`slavery786/bert4rec-movie-recommender-fine-tuning`) for 5–8 epochs per batch instead of retraining from scratch.
-- **Champion / Challenger Promotion**: Models compete on held-out temporal evaluation metrics (`NDCG@10`, `Recall@10`, `RMSE`). Only models exceeding promotion thresholds become Champion.
-- **Automated Cloud Retraining**: GitHub Actions workflow (`.github/workflows/retrain.yml`) runs on the 1st & 15th of every month: Replay → Validate → SVD → Kaggle API → Promote → Azure Container App redeploy.
-- **Azure Cloud Integration**: Model artifacts and dataset snapshots stored in Azure Blob Storage; API served via Azure Container Apps.
+Instead of a plain list of movie recommendations, this app turns recommendation into an interactive mind-reading game powered by a 4-layer **BERT4Rec Transformer**:
+
+1. **Pick your top movies**: Choose 3 to 5 movies you recently loved.
+2. **AI generates candidates**: BERT4Rec scans 54,000+ movies and picks 4 candidates based on your sequence.
+3. **Think of one**: Secretly pick one of the 4 candidates in your head without telling the app.
+4. **Reveal**: Hit **Reveal Mind Read**—BERT4Rec uses sequential attention probabilities to predict which movie you chose!
+
+---
+
+## 🏗️ System Architecture
+
+```text
+ ┌─────────────────────────────────────────────────────────────┐
+ │                    MovieLens Master Data                     │
+ │          (ml-1m local dev / ml-32m on Kaggle T4 GPU)        │
+ └──────────────────────────────┬──────────────────────────────┘
+                                │
+                      Replay Controller
+                (Simulates 30-day stream data)
+                                │
+                                ▼
+ ┌─────────────────────────────────────────────────────────────┐
+ │                Pandera Data Validation                      │
+ └──────────────┬──────────────────────────────┬───────────────┘
+                ▼                               ▼
+ ┌─────────────────────────────┐ ┌─────────────────────────────┐
+ │      Baseline SVD Model     │ │     BERT4Rec Transformer    │
+ │   (scikit-surprise local)   │ │   (PyTorch 4-layer on     │
+ └──────────────┬──────────────┘ │    Kaggle Nvidia T4 GPU)    │
+                │                └──────────────┬──────────────┘
+                └──────────────┬────────────────┘
+                               │
+                               ▼
+ ┌─────────────────────────────────────────────────────────────┐
+ │             Champion / Challenger Promotion                 │
+ │            (MLflow Registry + S3 Artifacts)                 │
+ └──────────────────────────────┬──────────────────────────────┘
+                                │
+                                ▼
+ ┌─────────────────────────────────────────────────────────────┐
+ │              Streamlit "Mind Reader" Game                   │
+ │                 (Live on AWS EC2)                           │
+ └─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🚀 Key Highlights
+
+- **BERT4Rec Transformer**: Implemented a 4-layer Transformer Encoder with bidirectional self-attention in PyTorch to capture dynamic context shifts in what users watch next.
+- **Kaggle GPU Training Pipeline**: Trained on **32+ million MovieLens ratings** using Kaggle Nvidia T4 GPUs, with warm-start fine-tuning triggered via API.
+- **Continuous Stream Replay**: Simulates real production data drift by chronologically releasing 30-day interaction chunks from an immutable master dataset.
+- **Automated Retraining**: GitHub Actions workflow (`.github/workflows/retrain.yml`) runs every Sunday to pull data from AWS S3, validate schema with Pandera, retrain SVD & BERT4Rec, gate-check models via MLflow, and upload the winning champion model to S3.
+- **AWS Deployment**: Hosted on an AWS EC2 instance (`http://3.111.33.59:8501`) connected to AWS S3 storage.
 
 ---
 
@@ -66,57 +75,60 @@
 ```text
 .
 ├── .github/workflows/
-│   └── retrain.yml              # 12-step bi-weekly automated retraining pipeline
+│   ├── ci.yml                   # Automated test suite execution
+│   └── retrain.yml              # Weekly retraining pipeline
 ├── configs/
-│   └── config.yaml              # Central single-source-of-truth configuration
-├── azure/
-│   └── container-app.yml        # Azure Container App deployment specification
-├── notebooks/
-│   ├── bert4rec_kaggle_train.py # Kaggle GPU T4 training notebook script
-│   └── kernel-metadata.json    # Kaggle CLI metadata configuration
+│   └── config.yaml              # Central settings configuration
 ├── dags/
-│   └── movie_retraining_dag.py  # 13-task Airflow Retraining DAG
+│   └── movielens_pipeline.py    # Local Airflow orchestration DAG
+├── notebooks/
+│   └── bert4rec_kaggle_train.py # Kaggle GPU training script
 ├── src/
 │   ├── api/
-│   │   └── main.py              # FastAPI server (serving champion model)
+│   │   └── main.py              # FastAPI recommendation API
+│   ├── dashboard/
+│   │   └── app.py              # Streamlit "Movie Mind Reader" game app
 │   ├── data/
-│   │   ├── validation.py        # pandera schema and boundary checks
+│   │   ├── sequence_builder.py  # BERT4Rec sequence mask generator
 │   │   ├── temporal_split.py    # Time-aware train/val/test splitter
-│   │   └── sequence_builder.py  # Masked interaction sequence builder for BERT4Rec
+│   │   └── validation.py        # Pandera schema validator
 │   ├── evaluation/
-│   │   └── metrics.py           # NDCG@K, Recall@K, Precision@K, Hit Rate@K, MRR@K
+│   │   ├── evaluator.py         # Evaluation pipeline runner
+│   │   └── metrics.py           # Precision@K, NDCG@K, Recall@K, MRR@K
 │   ├── inference/
-│   │   └── recommender.py       # Unified Recommender class (SVD + BERT4Rec)
+│   │   ├── bert4rec_inference.py# Model inference & prediction logic
+│   │   └── recommender.py       # Unified recommender interface
 │   ├── ingestion/
-│   │   ├── movielens_fetcher.py # MovieLens ml-1m downloader & normalizer
+│   │   ├── movielens_fetcher.py # MovieLens dataset fetcher
 │   │   └── snapshot_diff.py     # Rating snapshot diff calculator
 │   ├── models/
-│   │   ├── base_model.py        # Abstract BaseRecommender interface
-│   │   ├── svd_model.py         # SVD Matrix Factorization wrapper
-│   │   └── bert4rec.py          # PyTorch BERT4Rec Transformer model
+│   │   ├── bert4rec.py          # PyTorch BERT4Rec Transformer model
+│   │   └── svd_model.py         # Collaborative filtering baseline
 │   ├── monitoring/
-│   │   └── performance.py       # Performance history logger & degradation detector
+│   │   ├── drift_monitor.py     # Data & concept drift monitor
+│   │   └── performance.py       # Runtime performance tracking
 │   ├── replay/
-│   │   ├── replay_controller.py # Chronological batch release engine
-│   │   └── replay_state.py      # Idempotent state management
+│   │   ├── replay_controller.py # Chronological stream replay engine
+│   │   └── replay_state.py      # Idempotent state manager
 │   ├── storage/
-│   │   └── azure_blob.py        # Azure Blob Storage client
+│   │   └── s3_storage.py        # AWS S3 storage interface
 │   ├── tracking/
-│   │   ├── mlflow_tracker.py    # MLflow experiment tracking helpers
+│   │   ├── mlflow_tracker.py    # MLflow experiment tracking
 │   │   └── model_registry.py    # Champion/Challenger promotion gate
 │   └── training/
-│       ├── train_bert4rec.py    # BERT4Rec training/fine-tuning script
-│       └── kaggle_trigger.py    # Kaggle API trigger & polling script
-├── tests/unit/                  # Pytest unit test suite (16 tests)
-├── Dockerfile                   # Production container definition
-└── requirements.txt
+│       ├── kaggle_trigger.py    # Kaggle API GPU trigger
+│       ├── train_bert4rec.py    # PyTorch training loop
+│       └── train_svd.py         # SVD training script
+├── tests/unit/                  # Pytest unit tests (16/16 passing)
+├── requirements.txt
+└── Dockerfile
 ```
 
 ---
 
-## 🚀 Quick Start (Local Setup)
+## 🏃 Quickstart (Local Run)
 
-### 1. Clone & Install Environment
+### 1. Setup Environment
 ```bash
 git clone https://github.com/priyanshu-projects/Movie_Recommender.git
 cd Movie_Recommender
@@ -125,87 +137,38 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Fetch & Normalize `ml-1m` Dataset
+### 2. Download Data & Train Baseline
 ```bash
+# Download MovieLens dataset
 python -m src.ingestion.movielens_fetcher --dataset ml-1m
-```
 
-### 3. Release Replay Batch & Train Baseline
-```bash
-# Release chronological batch 001
+# Release a 30-day batch
 python -m src.replay.replay_controller
 
-# Validate batch data
-python -m src.data.validation --input data/raw/incoming/batch_001.csv
-
-# Train SVD model and generate recommendations
+# Train baseline SVD model
 python -m src.models.svd_model
 ```
 
-### 4. Run FastAPI Server
+### 3. Launch App Locally
 ```bash
-uvicorn src.api.main:app --reload --port 8000
+streamlit run src/dashboard/app.py
 ```
 
-Query recommendations:
+### 4. Run Unit Tests
 ```bash
-curl "http://localhost:8000/recommend/1?k=5"
-```
-
-Response:
-```json
-{
-  "user_id": 1,
-  "model_type": "svd",
-  "recommendations": [
-    {
-      "movieId": 2019,
-      "score": 4.7669,
-      "title": "Seven Samurai (The Magnificent Seven) (Shichinin no samurai) (1954)",
-      "genres": "Action|Drama"
-    },
-    {
-      "movieId": 3307,
-      "score": 4.6931,
-      "title": "City Lights (1931)",
-      "genres": "Comedy|Drama|Romance"
-    },
-    {
-      "movieId": 318,
-      "score": 4.6552,
-      "title": "Shawshank Redemption, The (1994)",
-      "genres": "Drama"
-    }
-  ]
-}
+pytest tests/unit/
 ```
 
 ---
 
-## 🧪 Running Unit Tests
+## 📊 Evaluation Results
 
-Run the full pytest suite:
-```bash
-pytest tests/unit/ -v
-```
-
-Output:
-```text
-16 passed in 3.75s
-```
+| Model | Architecture | Training Dataset | Precision@10 | NDCG@10 |
+|---|---|---|---|---|
+| **SVD Baseline** | Collaborative Filtering (Matrix Factorization) | MovieLens 1M | 14.82% | 0.0821 |
+| **BERT4Rec (Champion)** | 4-Layer Transformer Encoder | MovieLens 32M | **20.57%** | **0.1084** |
 
 ---
 
-## 🛠️ Tech Stack & Tooling
-
-| Layer | Technology |
-|---|---|
-| **Master Dataset** | MovieLens `ml-1m` (1,000,209 ratings, 3,883 movies) |
-| **Recommendation Models** | SVD (`scikit-surprise`) + BERT4Rec (`PyTorch`) |
-| **GPU Acceleration** | Kaggle T4 GPU (`slavery786/bert4rec-movie-recommender-fine-tuning`) |
-| **Cloud Storage** | Azure Blob Storage (`azure-storage-blob`) |
-| **Cloud Serving** | Azure Container Apps (`Dockerfile` + `FastAPI` + `uvicorn`) |
-| **Data Validation** | `pandera` |
-| **Experiment Tracking** | MLflow (`mlflow`) |
-| **Orchestration / CI/CD** | GitHub Actions (`.github/workflows/retrain.yml`) & Apache Airflow |
-| **Testing** | `pytest` + `FastAPI TestClient` |
+## 📜 License
+MIT

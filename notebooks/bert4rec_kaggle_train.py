@@ -18,7 +18,7 @@ SETUP (do once in Kaggle):
 import subprocess
 try:
     subprocess.run(
-        ["pip", "install", "-q", "azure-storage-blob", "pandera"],
+        ["pip", "install", "-q", "boto3", "pandera"],
         check=False, timeout=120,
     )
     print("✓ Optional dependencies checked")
@@ -33,46 +33,36 @@ from pathlib import Path
 try:
     from kaggle_secrets import UserSecretsClient
     _s = UserSecretsClient()
-    os.environ["AZURE_STORAGE_CONNECTION_STRING"] = _s.get_secret("AZURE_STORAGE_CONNECTION_STRING")
-    os.environ["AZURE_STORAGE_CONTAINER"]         = _s.get_secret("AZURE_STORAGE_CONTAINER")
-    print("✓ Azure secrets loaded")
+    os.environ["AWS_ACCESS_KEY_ID"]     = _s.get_secret("AWS_ACCESS_KEY_ID")
+    os.environ["AWS_SECRET_ACCESS_KEY"] = _s.get_secret("AWS_SECRET_ACCESS_KEY")
+    os.environ["AWS_S3_BUCKET"]        = _s.get_secret("AWS_S3_BUCKET")
+    print("✓ AWS secrets loaded")
 except Exception as e:
-    print(f"Azure secrets not found ({e}) — saving locally to Kaggle output")
+    print(f"AWS secrets not found ({e}) — saving artifacts locally to Kaggle output")
 
 
-# ── Cell 3: Azure helpers ─────────────────────────────────────────────────────
-AZURE_OK = bool(os.environ.get("AZURE_STORAGE_CONNECTION_STRING"))
+# ── Cell 3: AWS S3 helpers ───────────────────────────────────────────────────
+S3_OK = bool(os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_S3_BUCKET"))
 
-if AZURE_OK:
+if S3_OK:
     try:
-        from azure.storage.blob import BlobServiceClient
-        _blob_service = BlobServiceClient.from_connection_string(
-            os.environ["AZURE_STORAGE_CONNECTION_STRING"]
+        import boto3
+        _s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+            region_name=os.environ.get("AWS_REGION", "ap-south-1")
         )
-        _container = os.environ.get("AZURE_STORAGE_CONTAINER", "mlops-artifacts")
+        _bucket = os.environ.get("AWS_S3_BUCKET", "movie-recommender-mlops-745600")
 
-        def download_blob(blob_name: str, local_path: Path) -> bool:
-            try:
-                local_path.parent.mkdir(parents=True, exist_ok=True)
-                client = _blob_service.get_blob_client(container=_container, blob=blob_name)
-                with open(local_path, "wb") as f:
-                    f.write(client.download_blob().readall())
-                print(f"  ✓ Downloaded {blob_name} → {local_path}")
-                return True
-            except Exception as e:
-                print(f"  ✗ {blob_name}: {e}")
-                return False
+        def upload_blob(local_path: Path, s3_key: str) -> None:
+            _s3_client.upload_file(str(local_path), _bucket, s3_key)
+            print(f"  ✓ Uploaded {local_path} → s3://{_bucket}/{s3_key}")
 
-        def upload_blob(local_path: Path, blob_name: str) -> None:
-            client = _blob_service.get_blob_client(container=_container, blob=blob_name)
-            with open(local_path, "rb") as f:
-                client.upload_blob(f, overwrite=True)
-            print(f"  ✓ Uploaded {local_path} → {blob_name}")
-
-        print("✓ Azure Blob client ready")
+        print("✓ AWS S3 client ready")
     except Exception as e:
-        print(f"Azure Blob init failed: {e}")
-        AZURE_OK = False
+        print(f"AWS S3 init failed: {e}")
+        S3_OK = False
 
 
 # ── Cell 4: Streamlined Low-Memory Data Pipeline ──────────────────────────────
@@ -523,12 +513,12 @@ with open(metrics_path, "w") as f:
 
 print(f"✓ Model saved: {candidate_path}")
 
-if AZURE_OK and "upload_blob" in dir():
+if S3_OK and "upload_blob" in dir():
     try:
         upload_blob(candidate_path, "models/bert4rec_candidate.pkl")
         upload_blob(metrics_path,   "models/bert4rec_metrics.json")
-        print("✓ All artifacts uploaded to Azure Blob Storage")
+        print("✓ All artifacts uploaded to AWS S3")
     except Exception as e:
-        print(f"Azure upload skipped: {e}")
+        print(f"AWS S3 upload skipped: {e}")
 
 print("\n🎉 Training finished successfully!")
