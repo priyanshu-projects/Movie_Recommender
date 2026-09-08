@@ -6,7 +6,8 @@
   "kernel_type": "script",
   "is_private": true,
   "enable_gpu": true,
-  "machine_shape": "gpu",
+  "accelerator": "gpu",
+  "machine_shape": "nvidia-tesla-t4-x2",
   "enable_docker_build": false,
   "enable_internet": true,
   "dataset_sources": [

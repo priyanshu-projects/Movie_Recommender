@@ -30,9 +30,20 @@ class Recommender:
         self.movies_df:  pd.DataFrame | None = None
 
     def load(self) -> "Recommender":
-        """Load champion model and supporting data."""
+        """Load champion model and supporting data. Auto-downloads from AWS S3 if missing."""
         if not CHAMPION_PATH.exists():
-            raise FileNotFoundError("No champion model found. Train and promote a model first.")
+            logger.info("Local champion model not found. Attempting download from AWS S3...")
+            try:
+                from src.storage.s3_storage import S3Storage
+                store = S3Storage()
+                store.download_champion(CHAMPION_PATH)
+                store.download_champion_meta(CHAMPION_META)
+                logger.info("✓ Downloaded champion model from AWS S3.")
+            except Exception as exc:
+                logger.warning("Could not download champion from S3: %s", exc)
+
+        if not CHAMPION_PATH.exists():
+            raise FileNotFoundError("No champion model found locally or on AWS S3.")
 
         # Load model meta
         if CHAMPION_META.exists():

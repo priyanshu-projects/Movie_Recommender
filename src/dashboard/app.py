@@ -13,8 +13,15 @@ Run:
     streamlit run src/dashboard/app.py
 """
 
+import os
 import random
+import sys
 from pathlib import Path
+
+# Ensure project root is in sys.path for src imports
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 import streamlit as st
@@ -23,8 +30,8 @@ import yaml
 # ── Page Config ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="Movie Mind Reader — BERT4Rec AI",
-    page_icon="🔮",
+    page_title="Movie Mind Reader",
+    page_icon="🎬",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -33,117 +40,104 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
-    background-color: #0A0A0F;
+    background-color: #0B0C10;
 }
 
 .hero {
     text-align: center;
-    padding: 2.5rem 1rem 1rem 1rem;
+    padding: 2rem 1rem 1rem 1rem;
 }
 .hero-title {
-    font-size: 3rem;
-    font-weight: 900;
-    background: linear-gradient(135deg, #E50914 0%, #FF6B35 50%, #FFD700 100%);
+    font-size: 2.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #E50914 0%, #F56565 50%, #ED8936 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    line-height: 1.1;
-    margin-bottom: 0.5rem;
+    line-height: 1.15;
+    margin-bottom: 0.6rem;
+    letter-spacing: -0.02em;
 }
 .hero-sub {
-    font-size: 1.1rem;
-    color: #888;
-    letter-spacing: 0.04em;
+    font-size: 1.05rem;
+    color: #9A9EA7;
+    font-weight: 400;
+    max-width: 650px;
+    margin: 0 auto;
+    line-height: 1.5;
 }
 .step-label {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.14em;
     color: #E50914;
-    margin-bottom: 0.3rem;
+    margin-bottom: 0.2rem;
 }
 .step-title {
-    font-size: 1.4rem;
+    font-size: 1.35rem;
     font-weight: 700;
-    color: #FFFFFF;
-    margin-bottom: 1rem;
+    color: #F7FAFC;
+    margin-bottom: 0.8rem;
+    letter-spacing: -0.01em;
 }
 .movie-card {
-    background: linear-gradient(145deg, #13141C, #1A1C25);
-    border: 1px solid #2A2D3A;
-    border-radius: 16px;
-    padding: 1.4rem 1.2rem;
+    background: #14161F;
+    border: 1px solid #232734;
+    border-radius: 12px;
+    padding: 1.2rem 1.1rem;
     margin-bottom: 0.8rem;
-    transition: border-color 0.2s ease;
-    height: 140px;
+    transition: all 0.2s ease;
+    height: 125px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
 }
 .movie-card:hover {
     border-color: #E50914;
+    background: #191C27;
 }
 .movie-card .option-num {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.1em;
     color: #E50914;
     text-transform: uppercase;
 }
 .movie-card .movie-title {
-    font-size: 1.05rem;
-    font-weight: 700;
+    font-size: 1rem;
+    font-weight: 600;
     color: #FFFFFF;
-    margin: 0.3rem 0;
-    line-height: 1.3;
+    margin: 0.2rem 0;
+    line-height: 1.35;
 }
 .movie-card .movie-genres {
-    font-size: 0.8rem;
-    color: #666;
-}
-.score-bar-wrap {
-    background: #1A1C25;
-    border: 1px solid #2A2D3A;
-    border-radius: 12px;
-    padding: 1.2rem;
-    margin: 0.4rem 0;
-}
-.score-bar-label {
-    font-size: 0.85rem;
-    color: #CCC;
-    font-weight: 600;
-    margin-bottom: 0.4rem;
+    font-size: 0.78rem;
+    color: #717A8A;
 }
 .winner-card {
-    background: linear-gradient(135deg, #1A0A0A, #2A0D0D);
-    border: 2px solid #E50914;
-    border-radius: 16px;
-    padding: 2rem;
+    background: #151823;
+    border: 1.5px solid #E50914;
+    border-radius: 14px;
+    padding: 1.8rem;
     text-align: center;
-    animation: pulse 2s infinite;
-}
-@keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.4); }
-    70% { box-shadow: 0 0 0 15px rgba(229, 9, 20, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(229, 9, 20, 0); }
 }
 .divider {
     border: none;
-    border-top: 1px solid #1E2030;
-    margin: 2rem 0;
+    border-top: 1px solid #1C1F2B;
+    margin: 1.8rem 0;
 }
 .hint-box {
-    background: #0D1117;
-    border-left: 3px solid #FFD700;
+    background: #131620;
+    border-left: 3px solid #E50914;
     padding: 0.8rem 1.2rem;
     border-radius: 0 8px 8px 0;
-    margin: 1rem 0;
-    color: #BBB;
+    margin: 0.8rem 0;
+    color: #A0AEC0;
     font-size: 0.9rem;
 }
 </style>
@@ -152,151 +146,255 @@ html, body, [class*="css"] {
 
 # ── Load Data ─────────────────────────────────────────────────────────────────
 
+GENRE_TO_ML1M = {
+    "Action":    [2571, 260, 1196, 2028, 1527],
+    "Comedy":    [1, 3114, 2355, 3751, 8641],
+    "Drama":     [318, 527, 1197, 1198, 1221],
+    "Romance":   [356, 586, 1580, 3948, 4973],
+    "Thriller":  [593, 589, 1240, 1617, 2918],
+    "Horror":    [2762, 2918, 3555, 1291, 588],
+    "Sci-Fi":    [2571, 1196, 260, 2028, 3114],
+    "Crime":     [858, 296, 593, 1213, 2959],
+    "War":       [527, 110, 2628, 1704, 1945],
+    "Adventure": [260, 1196, 3578, 2028, 1527],
+    "Sport":     [110, 527, 1968, 1097, 1617],
+    "Biography": [527, 110, 912, 1704, 1617],
+    "Music":     [2858, 2355, 1, 3114, 4306],
+}
+
 @st.cache_data
 def load_movies():
-    for path in [
-        Path("data/raw/ml-1m/movies.csv"),
-        Path("data/raw/ml-latest-small/movies.csv"),
-    ]:
-        if path.exists():
-            return pd.read_csv(path)
-    # Fallback mini dataset
-    return pd.DataFrame([
-        {"movieId": 1,    "title": "Toy Story (1995)",                                 "genres": "Animation|Children's|Comedy"},
-        {"movieId": 260,  "title": "Star Wars: Episode IV - A New Hope (1977)",         "genres": "Action|Adventure|Sci-Fi"},
-        {"movieId": 1196, "title": "Star Wars: Episode V - The Empire Strikes Back (1980)", "genres": "Action|Adventure|Sci-Fi"},
-        {"movieId": 2571, "title": "Matrix, The (1999)",                               "genres": "Action|Sci-Fi|Thriller"},
-        {"movieId": 318,  "title": "Shawshank Redemption, The (1994)",                 "genres": "Drama"},
-        {"movieId": 296,  "title": "Pulp Fiction (1994)",                              "genres": "Crime|Drama"},
-        {"movieId": 356,  "title": "Forrest Gump (1994)",                              "genres": "Comedy|Drama|Romance"},
-        {"movieId": 593,  "title": "Silence of the Lambs, The (1991)",                "genres": "Crime|Horror|Thriller"},
-        {"movieId": 2959, "title": "Fight Club (1999)",                                "genres": "Action|Crime|Drama|Thriller"},
-        {"movieId": 527,  "title": "Schindler's List (1993)",                          "genres": "Drama|War"},
-        {"movieId": 858,  "title": "Godfather, The (1972)",                            "genres": "Action|Crime|Drama"},
-        {"movieId": 2858, "title": "American Beauty (1999)",                           "genres": "Comedy|Drama"},
-    ])
+    p_32m = Path("data/raw/ml-32m/movies_vocab.csv")
+    p_latest = Path("data/raw/ml-latest-small/movies.csv")
+
+    if p_32m.exists():
+        df = pd.read_csv(p_32m)
+        df["source"] = "Hollywood"
+    elif p_latest.exists():
+        df = pd.read_csv(p_latest)
+        df["source"] = "Hollywood"
+        df["year"] = df["title"].str.extract(r"\((\d{4})\)$").astype(float)
+        df = df[df["year"].isna() | (df["year"] >= 1970)].drop(columns="year")
+    else:
+        df = pd.DataFrame([
+            {"movieId": 1,    "title": "Toy Story (1995)",    "genres": "Animation|Comedy"},
+            {"movieId": 2571, "title": "Matrix, The (1999)",  "genres": "Action|Sci-Fi"},
+        ])
+        df["source"] = "Hollywood"
+
+    # Append Bollywood / Indian movies
+    p_bolly = Path("data/raw/bollywood/movies.csv")
+    if p_bolly.exists():
+        df_bolly = pd.read_csv(p_bolly)
+        df_bolly["source"] = "Indian Cinema"
+        df = pd.concat([df, df_bolly], ignore_index=True).drop_duplicates(subset="title")
+
+    return df.reset_index(drop=True)
+
+
+def genre_to_bert4rec_ids(genres_str: str, n: int = 5) -> list:
+    """Map a genre string to known movie IDs."""
+    genres = genres_str.replace("|", " ").split()
+    candidates = []
+    for g in genres:
+        candidates.extend(GENRE_TO_ML1M.get(g, []))
+    seen = set()
+    result = []
+    for mid in candidates:
+        if mid not in seen:
+            seen.add(mid)
+            result.append(mid)
+    return result[:n] if result else [318, 260, 2571, 593, 356]
 
 
 @st.cache_resource
-def load_recommender():
-    try:
-        from src.inference.recommender import Recommender
-        rec = Recommender("configs/config.yaml").load()
-        return rec
-    except Exception:
-        return None
+def load_bert4rec():
+    from src.inference.bert4rec_inference import BERT4RecInference
+    return BERT4RecInference().load()
 
 
-movies_df = load_movies()
+movies_df   = load_movies()
 title_to_id = dict(zip(movies_df["title"], movies_df["movieId"]))
 id_to_row   = movies_df.set_index("movieId").to_dict(orient="index")
-recommender = load_recommender()
+engine      = load_bert4rec()
 
-ALL_TITLES = sorted(movies_df["title"].tolist())
+if engine:
+    ALL_TITLES = sorted(
+        t for t, mid in title_to_id.items()
+        if int(mid) in engine.movie_to_idx
+    )
+else:
+    ALL_TITLES = sorted(movies_df["title"].tolist())
 
 
-# ── Hero Header ───────────────────────────────────────────────────────────────
+# ── Header ────────────────────────────────────────────────────────────────────
 
 st.markdown("""
 <div class="hero">
-    <div class="hero-title">🔮 Movie Mind Reader</div>
-    <div class="hero-sub">Can our 4-Layer BERT4Rec Transformer read your mind?</div>
+    <div class="hero-title">Movie Mind Reader</div>
+    <div class="hero-sub">Can our recommendation model guess what movie you'll pick next?</div>
+</div>
+
+<div class="hint-box" style="border-left-color: #E50914; background: #131622; max-width: 720px; margin: 1.2rem auto; text-align: left; padding: 1rem 1.4rem;">
+    <strong style="color: #F7FAFC; font-size: 0.95rem;">How it works:</strong>
+    <ol style="margin: 0.4rem 0 0 1.2rem; padding: 0; color: #A0AEC0; font-size: 0.88rem; line-height: 1.6;">
+        <li><b>Step 1:</b> Add 1 to 5 movies you recently enjoyed.</li>
+        <li><b>Step 2:</b> Pick <b>ONE</b> of the 4 generated movies silently in your mind.</li>
+        <li><b>Step 3:</b> Select what you picked and click <i>Reveal Prediction</i> to see if the model guessed right!</li>
+    </ol>
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 
-# ── STEP 1: Pick Favorites ────────────────────────────────────────────────────
+# ── STEP 1: Select Favorites ──────────────────────────────────────────────────
 
 st.markdown('<div class="step-label">Step 1 of 3</div>', unsafe_allow_html=True)
-st.markdown('<div class="step-title">🎬 Tell us movies you recently loved</div>', unsafe_allow_html=True)
+st.markdown('<div class="step-title">Add movies you recently enjoyed</div>', unsafe_allow_html=True)
 
-DEFAULT_PICKS = [t for t in [
-    "Matrix, The (1999)",
-    "Star Wars: Episode IV - A New Hope (1977)",
-    "Terminator 2: Judgment Day (1991)",
-] if t in title_to_id]
+# Initialise selected list in session state
+if "selected_titles" not in st.session_state:
+    st.session_state["selected_titles"] = [
+        t for t in ["Matrix, The (1999)", "Star Wars: Episode IV - A New Hope (1977)", "Terminator 2: Judgment Day (1991)"]
+        if t in title_to_id
+    ]
 
-selected_titles = st.multiselect(
-    "Pick 3–5 movies you loved watching (in order, most recent last):",
-    options=ALL_TITLES,
-    default=DEFAULT_PICKS[:3],
-    max_selections=5,
-    help="Choose movies in the order you watched them for best BERT4Rec sequence modelling.",
-)
+ALL_TITLES_LOWER = {t: t.lower() for t in ALL_TITLES}
 
-if len(selected_titles) < 1:
+def add_movie_to_sequence(movie_title: str):
+    if movie_title not in st.session_state["selected_titles"] and len(st.session_state["selected_titles"]) < 5:
+        st.session_state["selected_titles"].append(movie_title)
+
+# Reset picker state if reset_picker flag is set
+if st.session_state.get("reset_picker"):
+    st.session_state["search_q_input"] = ""
+    st.session_state["reset_picker"]   = False
+
+# ── Side-by-Side Search & Top 7 Matches Dropdown (0ms Lag, All 54k Movies) ────
+col_search, col_dropdown = st.columns([1, 1])
+
+with col_search:
+    search_q = st.text_input(
+        "Search titles:",
+        placeholder="Type e.g. Godfather, Inception, Shutter Island, RRR...",
+        key="search_q_input",
+    )
+
+query = search_q.strip().lower()
+if query and len(query) >= 2:
+    prefix  = [t for t in ALL_TITLES if ALL_TITLES_LOWER[t].startswith(query)]
+    sub     = [t for t in ALL_TITLES if query in ALL_TITLES_LOWER[t] and not ALL_TITLES_LOWER[t].startswith(query)]
+    matches = (prefix + sub)[:7]  # Top 7 matches max -> ZERO browser lag!
+else:
+    # Top default suggestions when search is empty
+    matches = [t for t in [
+        "Godfather, The (1972)",
+        "Inception (2010)",
+        "Matrix, The (1999)",
+        "Pulp Fiction (1994)",
+        "Shawshank Redemption, The (1994)",
+        "Dark Knight, The (2008)",
+        "Interstellar (2014)",
+    ] if t in title_to_id][:7]
+
+with col_dropdown:
+    lbl = f"Matches for \"{search_q.strip()}\":" if query else "Select from suggestions:"
+    chosen_movie = st.selectbox(
+        lbl,
+        options=["— Choose a movie to add —"] + matches,
+        key="top_matches_dropdown",
+    )
+    if chosen_movie and chosen_movie != "— Choose a movie to add —":
+        add_movie_to_sequence(chosen_movie)
+        st.session_state["reset_picker"] = True
+        st.rerun()
+
+# ── Display Watch Sequence ────────────────────────────────────────────────────
+selected_titles = st.session_state["selected_titles"]
+
+if selected_titles:
+    st.markdown(f"**Your Selection** ({len(selected_titles)}/5 movies in watch order):")
+    for i, t in enumerate(selected_titles):
+        c1, c2 = st.columns([6, 1])
+        c1.markdown(f"`{i+1}.` **{t}**")
+        if c2.button("Remove", key=f"remove_{i}", help="Remove movie"):
+            st.session_state["selected_titles"].pop(i)
+            st.rerun()
+else:
     st.markdown("""
     <div class="hint-box">
-        👆 Select at least one movie above to start. The AI will use your watch sequence to predict your next pick.
+        Search and add at least one movie above to proceed.
     </div>
     """, unsafe_allow_html=True)
+    st.stop()
+
+if len(selected_titles) < 1:
     st.stop()
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 
-# ── STEP 2: Generate 4 Options ────────────────────────────────────────────────
+# ── STEP 2: Options Generation ────────────────────────────────────────────────
 
 st.markdown('<div class="step-label">Step 2 of 3</div>', unsafe_allow_html=True)
-st.markdown('<div class="step-title">🎲 Here are your 4 options — pick ONE secretly in your mind!</div>', unsafe_allow_html=True)
+st.markdown('<div class="step-title">Pick one movie in your mind</div>', unsafe_allow_html=True)
 
-generate_clicked = st.button("🎲 Generate 4 Options", type="primary", key="gen_btn")
-if generate_clicked or "game_options" not in st.session_state:
-    selected_ids = [title_to_id[t] for t in selected_titles]
+sequence_changed = (st.session_state.get("last_selected_titles") != selected_titles)
 
-    # Get BERT4Rec top candidates
+generate_clicked = st.button("Refresh 4 Options", type="secondary", key="gen_btn")
+if generate_clicked or sequence_changed or "game_options" not in st.session_state or "ai_top_id" not in st.session_state:
+    st.session_state["last_selected_titles"] = list(selected_titles)
+    selected_ids = [int(title_to_id[t]) for t in selected_titles if t in title_to_id]
+    seed_ids     = [mid for mid in selected_ids if engine and mid in engine.movie_to_idx]
+
+    top_recs = engine.top_n(seed_ids, n=50, exclude_ids=selected_ids) if (engine and seed_ids) else []
+
     scored_options = []
-    try:
-        if recommender:
-            # Use a representative user who has seen similar movies
-            recs = recommender.recommend(user_id=random.randint(1, 100), n=50)
-            for r in recs:
-                mid = r["movieId"] if isinstance(r["movieId"], int) else int(r["movieId"])
-                if mid not in selected_ids and mid in id_to_row:
-                    scored_options.append({
-                        "movieId": mid,
-                        "score": float(r.get("score", r.get("predicted_rating", 0.0))),
-                        "title": id_to_row[mid]["title"],
-                        "genres": id_to_row[mid]["genres"],
-                    })
-    except Exception:
-        pass
+    for rec_mid, score in top_recs:
+        if rec_mid in id_to_row:
+            row = id_to_row[rec_mid]
+            scored_options.append({
+                "movieId": rec_mid,
+                "score":   float(score),
+                "title":   str(row["title"]),
+                "genres":  str(row.get("genres", "")),
+                "source":  str(row.get("source", "")),
+            })
 
-    # If we have enough scored options, pick 1 top + 3 from different genre groups
     if len(scored_options) >= 4:
-        top_pick = scored_options[0]
-        # Spread remaining 3 across different genres for variety
-        remaining = scored_options[1:]
-        random.shuffle(remaining)
-        distractors = remaining[:3]
-        all_4 = [top_pick] + distractors
+        top_pick    = scored_options[0]
+        pool        = scored_options[1:min(30, len(scored_options))]
+        distractors = random.sample(pool, min(3, len(pool)))
+        all_4       = [top_pick] + distractors
     else:
-        # Fallback: random unseen movies
-        unseen = movies_df[~movies_df["movieId"].isin(selected_ids)].sample(
-            n=min(4, len(movies_df)), random_state=random.randint(1, 999)
-        )
+        avail     = movies_df[~movies_df["movieId"].isin(selected_ids)]
+        sample_df = avail.sample(n=min(4, len(avail)), random_state=random.randint(1, 99999))
+        fallback_ids = [int(r["movieId"]) for _, r in sample_df.iterrows()]
+        fb_scores    = engine.score_movies(seed_ids, fallback_ids) if engine else {}
         all_4 = [
-            {"movieId": int(r["movieId"]), "score": round(random.uniform(3.0, 5.0), 2),
-             "title": r["title"], "genres": r["genres"]}
-            for _, r in unseen.iterrows()
+            {
+                "movieId": int(r["movieId"]),
+                "score":   fb_scores.get(int(r["movieId"]), 0.0001),
+                "title":   str(r["title"]),
+                "genres":  str(r.get("genres", "")),
+                "source":  str(r.get("source", "")),
+            }
+            for _, r in sample_df.iterrows()
         ]
 
     random.shuffle(all_4)
-
     st.session_state["game_options"] = all_4
-    st.session_state["ai_pick_idx"] = 0   # AI's top pick is always all_4 index before shuffle, track by movieId
-    st.session_state["ai_top_id"] = max(all_4, key=lambda x: x["score"])["movieId"]
-    st.session_state["revealed"] = False
+    st.session_state["ai_top_id"]    = max(all_4, key=lambda x: x["score"])["movieId"]
+    st.session_state["revealed"]     = False
 
-options_4 = st.session_state["game_options"]
-ai_top_id = st.session_state["ai_top_id"]
+
+options_4 = st.session_state.get("game_options", [])
+ai_top_id = st.session_state.get("ai_top_id", options_4[0]["movieId"] if options_4 else 0)
 
 st.markdown("""
 <div class="hint-box">
-    👁️ Look at the 4 movies below. Pick <b>ONE</b> silently in your mind — don't tell the AI!
-    Then click <b>Reveal Prediction</b> below to see if BERT4Rec can read your mind.
+    Look at the 4 movies below. Pick <b>ONE</b> silently in your mind — keep your choice secret until Step 3!
 </div>
 """, unsafe_allow_html=True)
 
@@ -304,12 +402,14 @@ st.markdown("""
 col_a, col_b = st.columns(2)
 for i, opt in enumerate(options_4):
     col = col_a if i % 2 == 0 else col_b
+    src = opt.get("source", "")
+    src_badge = f'<span style="font-size:0.7rem;background:#1e2d3d;color:#5bc4f5;padding:1px 6px;border-radius:3px;margin-left:4px">{src}</span>' if src else ""
     with col:
         st.markdown(f"""
         <div class="movie-card">
-            <div class="option-num">Option {i+1}</div>
+            <div class="option-num">Option {i+1} {src_badge}</div>
             <div class="movie-title">{opt['title']}</div>
-            <div class="movie-genres">🎭 {opt['genres']}</div>
+            <div class="movie-genres">{opt['genres']}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -319,16 +419,16 @@ st.markdown('<hr class="divider">', unsafe_allow_html=True)
 # ── STEP 3: Reveal Prediction ─────────────────────────────────────────────────
 
 st.markdown('<div class="step-label">Step 3 of 3</div>', unsafe_allow_html=True)
-st.markdown('<div class="step-title">🤫 Now reveal — what did you pick?</div>', unsafe_allow_html=True)
+st.markdown('<div class="step-title">See if the model guessed your pick</div>', unsafe_allow_html=True)
 
 user_choice_label = st.radio(
-    "Which option did you pick in your mind?",
+    "Select the option you chose in your mind:",
     options=[f"Option {i+1}: {opt['title']}" for i, opt in enumerate(options_4)],
     horizontal=True,
     index=None,
 )
 
-reveal_clicked = st.button("🔮 Reveal AI Mind Reader Prediction", type="primary",
+reveal_clicked = st.button("Reveal Prediction", type="primary",
                             use_container_width=True, disabled=(user_choice_label is None))
 
 if reveal_clicked and user_choice_label:
@@ -336,102 +436,94 @@ if reveal_clicked and user_choice_label:
     user_chosen_opt = options_4[user_chosen_idx]
     user_chosen_id  = user_chosen_opt["movieId"]
 
-    ai_top_opt = next((o for o in options_4 if o["movieId"] == ai_top_id), options_4[0])
-    ai_confidence = round((ai_top_opt["score"] / (sum(o["score"] for o in options_4))) * 100, 1)
+    ai_top_opt  = next((o for o in options_4 if o["movieId"] == ai_top_id), options_4[0])
+    sum_scores  = sum(o["score"] for o in options_4) or 1.0
+    ai_confidence = round((ai_top_opt["score"] / sum_scores) * 100, 1)
 
     # Score bars for all 4 options
-    st.markdown("### 📊 BERT4Rec Sequential Probability Scores")
-    max_score = max(o["score"] for o in options_4)
+    st.markdown("### Model Prediction Confidence")
     for i, opt in enumerate(options_4):
-        pct = round((opt["score"] / max_score) * 100, 1)
+        pct = round((opt["score"] / sum_scores) * 100, 1)
         is_ai   = opt["movieId"] == ai_top_id
         is_user = opt["movieId"] == user_chosen_id
         label_badge = ""
         if is_ai and is_user:
-            label_badge = " 🎯 **AI Pick = Your Pick!**"
+            label_badge = " (Predicted & Selected)"
         elif is_ai:
-            label_badge = " 🤖 **AI's Prediction**"
+            label_badge = " (Model Prediction)"
         elif is_user:
-            label_badge = " 👤 **Your Pick**"
+            label_badge = " (Your Selection)"
         st.markdown(f"**Option {i+1}**: {opt['title']}{label_badge}")
-        bar_color = "#E50914" if is_ai else ("#4CAF50" if is_user else "#333")
-        st.progress(pct / 100)
-        st.caption(f"Sequence score: {opt['score']:.4f} ({pct}%)")
+        st.progress(pct / 100.0)
+        st.caption(f"Relative confidence: {pct}%")
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
     # Result reveal
     if user_chosen_id == ai_top_id:
-        st.balloons()
         st.markdown(f"""
         <div class="winner-card">
-            <div style="font-size: 3rem; margin-bottom: 0.5rem">🎉</div>
-            <div style="font-size: 1.8rem; font-weight: 900; color: #E50914; margin-bottom: 0.5rem">I READ YOUR MIND!</div>
-            <div style="font-size: 1.1rem; color: #DDD; margin-bottom: 1rem">
-                BERT4Rec predicted <b>{ai_top_opt['title']}</b> — exactly what you chose!
+            <div style="font-size: 1.5rem; font-weight: 800; color: #E50914; margin-bottom: 0.5rem">Match Found</div>
+            <div style="font-size: 1.05rem; color: #DDD; margin-bottom: 0.8rem">
+                The model correctly predicted <b>{ai_top_opt['title']}</b>.
             </div>
-            <div style="font-size: 0.9rem; color: #888">
-                The 4-Layer Transformer analysed your sequence
-                (<i>{' → '.join(selected_titles)}</i>)
-                and ranked this movie with a sequential affinity score of <b>{ai_top_opt['score']:.4f}</b>
-                ({ai_confidence}% of total pool probability).
+            <div style="font-size: 0.88rem; color: #888">
+                Based on your recent selection, this movie received the highest relative affinity score ({ai_confidence}% confidence).
             </div>
         </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown(f"""
-        <div style="background:#0D1A0D; border: 1px solid #2A3D2A; border-radius: 16px; padding: 1.5rem; text-align:center;">
-            <div style="font-size: 2rem; margin-bottom:0.5rem">🤔</div>
-            <div style="font-size: 1.4rem; font-weight: 800; color: #4CAF50; margin-bottom:0.5rem">
-                You outsmarted the AI — this time!
+        <div style="background:#151823; border: 1px solid #282E3E; border-radius: 14px; padding: 1.5rem; text-align:center;">
+            <div style="font-size: 1.3rem; font-weight: 700; color: #E2E8F0; margin-bottom:0.5rem">
+                Different Choice
             </div>
-            <div style="font-size: 1rem; color: #CCC; margin-bottom: 0.8rem">
-                🤖 AI predicted: <b style="color:#E50914">{ai_top_opt['title']}</b>
+            <div style="font-size: 0.95rem; color: #CCC; margin-bottom: 0.8rem">
+                Model predicted: <b style="color:#E50914">{ai_top_opt['title']}</b>
                 &nbsp;|&nbsp;
-                👤 You chose: <b style="color:#4CAF50">{user_chosen_opt['title']}</b>
+                You selected: <b style="color:#4299E1">{user_chosen_opt['title']}</b>
             </div>
-            <div style="font-size: 0.85rem; color:#777">
-                BERT4Rec scored <i>{ai_top_opt['title']}</i> highest in your watch sequence 
-                but you had a surprise preference for <i>{user_chosen_opt['title']}</i>!
-                Try different input movies to see if it gets you next time.
+            <div style="font-size: 0.85rem; color:#717A8A">
+                The model assigned higher relative affinity to <i>{ai_top_opt['title']}</i> given your history, but noted your preference for <i>{user_chosen_opt['title']}</i>.
             </div>
         </div>
         """, unsafe_allow_html=True)
 
 
-# ── Sidebar: MLOps Panel ──────────────────────────────────────────────────────
+# ── Sidebar: Model & Pipeline Info ────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("### ⚙️ MLOps Panel")
+    st.markdown("### Model Status")
     st.markdown("---")
 
     meta_path = Path("models/champion_meta.yaml")
     if meta_path.exists():
         with open(meta_path) as f:
             meta = yaml.safe_load(f) or {}
-        st.markdown("**🏆 Active Champion Model**")
+        st.markdown("**Active Champion Model**")
         st.json(meta)
     else:
-        st.info("No champion metadata found.")
+        st.info("No active champion metadata.")
 
     st.markdown("---")
-    if recommender:
-        st.success("✅ BERT4Rec Transformer Loaded")
-        st.caption("4-Layer · 4-Head · 128-Dim · 40 Epochs")
+    if engine:
+        st.success("BERT4Rec Model Active")
+        st.caption("4-Layer Transformer Encoder")
+        st.caption(f"Vocabulary: 54,717 movies")
     else:
-        st.error("❌ Model not loaded")
+        st.error("Model unavailable")
 
     st.markdown("---")
-    if st.button("🔄 Trigger Replay Batch", help="Stream next chronological batch into the training pool"):
+    if st.button("Trigger Data Stream", help="Stream next batch into the dataset"):
         try:
             from src.replay.replay_controller import get_next_batch
             p = get_next_batch("configs/config.yaml")
             if p:
-                st.success(f"Released: {p}")
+                st.success(f"Processed batch: {p}")
             else:
-                st.warning("Data exhausted.")
+                st.warning("No further data.")
         except Exception as e:
-            st.error(f"Replay error: {e}")
+            st.error(f"Stream error: {e}")
 
     st.markdown("---")
-    st.caption("BERT4Rec · Val Loss 6.9377 · NDCG@10 84.5%")
+    st.caption("BERT4Rec 32M Dataset")

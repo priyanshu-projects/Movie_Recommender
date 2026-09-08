@@ -1,3 +1,4 @@
+# AUTO-TRIGGERED: 2026-08-23T10:02:30Z
 """
 notebooks/bert4rec_kaggle_train.py
 
@@ -236,21 +237,52 @@ gc.collect()
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-def get_safe_device():
-    if torch.cuda.is_available():
-        try:
-            # Test a small dummy tensor operation on GPU to verify compute compatibility
-            t = torch.zeros(10, device="cuda")
-            _ = (t + 1).cpu()
-            print(f"✓ CUDA GPU verified: {torch.cuda.get_device_name(0)}")
-            return torch.device("cuda")
-        except Exception as e:
-            print(f"⚠️ CUDA present but incompatible with PyTorch ({e}) — falling back to CPU")
-            return torch.device("cpu")
-    print("Device: CPU")
-    return torch.device("cpu")
+def require_cuda_device():
+    """
+    Ensure a compatible CUDA GPU is available.
+    If P100 (sm_60) is detected, auto-reinstall a compatible PyTorch version
+    and restart so training runs on whatever GPU Kaggle assigns.
+    CPU training on 32M dataset would take days — not acceptable.
+    """
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "❌ No CUDA GPU found! Training on CPU is not feasible for 32M dataset. "
+            "Ensure the Kaggle kernel is configured with a GPU accelerator."
+        )
 
-device = get_safe_device()
+    name = torch.cuda.get_device_name(0)
+    cap  = torch.cuda.get_device_capability(0)
+    sm   = cap[0] * 10 + cap[1]  # e.g. 60 for P100, 75 for T4
+
+    print(f"✓ GPU detected: {name} | Compute Capability: sm_{cap[0]}{cap[1]}")
+
+    # P100 is sm_60 — modern PyTorch (≥2.0) dropped sm_60 support.
+    # Auto-reinstall a compatible version and re-exec this script.
+    if sm < 70:
+        print(f"⚠️  GPU {name} (sm_{sm}) not supported by current PyTorch.")
+        print("   Auto-installing PyTorch 1.13.1 (last version with sm_60 support)...")
+        import subprocess, sys, os
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", "-q",
+            "torch==1.13.1+cu117",
+            "--extra-index-url", "https://download.pytorch.org/whl/cu117"
+        ])
+        print("   ✓ PyTorch 1.13.1 installed. Re-launching script on P100...")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    # Verify PyTorch can actually execute ops on this GPU
+    try:
+        t = torch.zeros(10, device="cuda")
+        _ = (t + 1).cpu()
+        print(f"✓ GPU ready for training: {name}")
+        return torch.device("cuda")
+    except Exception as e:
+        raise RuntimeError(
+            f"❌ GPU {name} (sm_{cap[0]}{cap[1]}) failed CUDA test: {e}"
+        ) from e
+
+device = require_cuda_device()
+
 
 MAX_SEQ = CONFIG["bert4rec"]["max_sequence_length"]
 
