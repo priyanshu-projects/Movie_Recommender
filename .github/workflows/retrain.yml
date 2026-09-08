@@ -62,6 +62,22 @@ jobs:
               print(f"No existing replay state on S3 (first run or fallback): {e}")
           EOF
 
+      # ── Step 1.5: Ensure master raw dataset exists ────────────────────────
+      - name: Ensure MovieLens raw dataset exists
+        run: |
+          python -c "
+          from pathlib import Path
+          from src.ingestion.movielens_fetcher import download_movielens, normalize_ratings
+          p = Path('data/raw/ml-1m/ratings.csv')
+          if not p.exists():
+              print('Downloading MovieLens ml-1m...')
+              dataset_dir = download_movielens('ml-1m')
+              df = normalize_ratings(dataset_dir, 'ml-1m')
+              p.parent.mkdir(parents=True, exist_ok=True)
+              df.to_csv(p, index=False)
+              print('✓ Master dataset downloaded & normalized')
+          "
+
       # ── Step 2: Release next replay batch ─────────────────────────────────
       - name: Release next replay batch
         id: replay
