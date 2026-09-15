@@ -29,6 +29,7 @@ jobs:
       AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET || 'movie-recommender-mlops-745600' }}
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_KEY }}
       KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'slavery786' }}
+      PYTHONPATH: .
 
     steps:
       # ── Setup ────────────────────────────────────────────────────────────────
