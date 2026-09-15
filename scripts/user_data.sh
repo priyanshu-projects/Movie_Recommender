@@ -16,6 +16,20 @@ pip install --upgrade pip
 pip install -r requirements.txt
 pip install boto3
 
+# Download model artifacts and data from S3
+mkdir -p /home/ubuntu/app/models/bert4rec
+mkdir -p /home/ubuntu/app/data/raw/ml-32m
+
+# Pull bert4rec model
+aws s3 cp s3://movie-recommender-mlops-745600/models/bert4rec/bert4rec_candidate.pkl /home/ubuntu/app/models/bert4rec/bert4rec_candidate.pkl --region ap-south-1 || true
+
+# Pull champion model metadata
+aws s3 cp s3://movie-recommender-mlops-745600/models/champion/bert4rec_candidate.pkl /home/ubuntu/app/models/bert4rec/bert4rec_candidate.pkl --region ap-south-1 || true
+aws s3 cp s3://movie-recommender-mlops-745600/models/champion/bert4rec_metrics.json /home/ubuntu/app/models/champion_meta.yaml --region ap-south-1 || true
+
+# Pull movies vocab (54K movie titles for search)
+aws s3 cp s3://movie-recommender-mlops-745600/data/movies_vocab.csv /home/ubuntu/app/data/raw/ml-32m/movies_vocab.csv --region ap-south-1 || true
+
 # Configure AWS credentials for S3 model pull
 mkdir -p /home/ubuntu/.aws
 cat > /home/ubuntu/.aws/credentials << 'CREDSEOF'
