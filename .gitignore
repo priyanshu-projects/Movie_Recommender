@@ -10,8 +10,8 @@ data/raw/
 data/processed/
 data/diffs/
 data/snapshots/
-models/
-!models/bert4rec/precomputed_recs.pkl
+/models/
+!/models/bert4rec/precomputed_recs.pkl
 
 # MLflow
 mlflow_tracking/
