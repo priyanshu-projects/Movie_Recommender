@@ -54,6 +54,7 @@ jobs:
           mkdir -p data/replay data/raw/incoming data/processed models
           python - <<'EOF'
           import os, sys
+          sys.path.insert(0, ".")
           try:
               from src.storage.s3_storage import S3Storage
               store = S3Storage()
@@ -67,6 +68,8 @@ jobs:
       - name: Ensure MovieLens raw dataset exists
         run: |
           python - <<'EOF'
+          import sys
+          sys.path.insert(0, ".")
           from pathlib import Path
           from src.ingestion.movielens_fetcher import download_movielens, normalize_ratings
           p = Path('data/raw/ml-1m/ratings.csv')
@@ -86,6 +89,7 @@ jobs:
         id: replay
         run: |
           python -c "
+          import sys; sys.path.insert(0, '.')
           from src.replay.replay_controller import get_next_batch
           path = get_next_batch('configs/config.yaml')
           if path is None:
@@ -106,6 +110,7 @@ jobs:
         if: steps.replay.outputs.batch_available == 'true'
         run: |
           python -c "
+          import sys; sys.path.insert(0, '.')
           from src.data.validation import validate_batch
           from pathlib import Path
           validate_batch(Path('${{ steps.replay.outputs.batch_path }}'))
@@ -117,6 +122,7 @@ jobs:
         if: steps.replay.outputs.batch_available == 'true'
         run: |
           python - <<'EOF'
+          import sys; sys.path.insert(0, '.')
           import pandas as pd
           from pathlib import Path
           delta = pd.read_csv("${{ steps.replay.outputs.batch_path }}")
@@ -136,6 +142,7 @@ jobs:
         if: steps.replay.outputs.batch_available == 'true'
         run: |
           python - <<'EOF'
+          import sys; sys.path.insert(0, '.')
           import pandas as pd, yaml, json
           from pathlib import Path
           from src.models.svd_model import SVDModel
@@ -171,6 +178,7 @@ jobs:
         if: steps.replay.outputs.batch_available == 'true'
         run: |
           python - <<'EOF' >> $GITHUB_OUTPUT
+          import sys; sys.path.insert(0, '.')
           import json
           from pathlib import Path
           from src.tracking.model_registry import evaluate_and_promote
@@ -196,6 +204,7 @@ jobs:
         if: steps.promote.outputs.promoted == 'true'
         run: |
           python - <<'EOF'
+          import sys; sys.path.insert(0, '.')
           from src.storage.s3_storage import S3Storage
           store = S3Storage()
           store.upload_champion()
