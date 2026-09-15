@@ -1,10 +1,10 @@
 name: Weekly Retraining Pipeline
 
-# Runs automatically every Sunday at 00:00 UTC
+# Runs automatically every Wednesday at 05:10 AM IST (23:40 UTC Tuesday)
 # Can also be triggered manually from GitHub Actions tab
 on:
   schedule:
-    - cron: "0 0 * * 0"
+    - cron: "40 23 * * 2"
   workflow_dispatch:
     inputs:
       skip_bert4rec:
