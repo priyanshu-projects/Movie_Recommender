@@ -269,6 +269,7 @@ def add_movie_to_sequence(movie_title: str):
 # Reset picker state if reset_picker flag is set
 if st.session_state.get("reset_picker"):
     st.session_state["search_q_input"] = ""
+    st.session_state["top_matches_dropdown"] = "— Choose a movie to add —"
     st.session_state["reset_picker"]   = False
 
 # ── Side-by-Side Search & Top 7 Matches Dropdown (0ms Lag, All 54k Movies) ────
