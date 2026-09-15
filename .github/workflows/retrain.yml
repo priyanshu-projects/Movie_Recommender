@@ -141,28 +141,7 @@ jobs:
       - name: Retrain SVD
         if: steps.replay.outputs.batch_available == 'true'
         run: |
-          python - <<'EOF'
-          import os, sys; sys.path.insert(0, os.path.abspath('.'))
-          import pandas as pd, yaml, json
-          from pathlib import Path
-          from src.models.svd_model import SVDModel
-          from src.data.temporal_split import global_temporal_split
-
-          with open("configs/config.yaml") as f:
-              cfg = yaml.safe_load(f)
-
-          ratings = pd.read_csv("data/processed/all_ratings.csv")
-          train, val, test = global_temporal_split(ratings)
-          model = SVDModel(cfg["svd"])
-          model.train(train)
-          Path("models").mkdir(exist_ok=True)
-          model.save(Path("models/svd_candidate.pkl"))
-          metrics = model.evaluate(test, k=cfg["evaluation"]["k"])
-          print(f"✓ SVD trained | metrics: {metrics}")
-
-          with open("models/svd_metrics.json", "w") as f:
-              json.dump(metrics, f)
-          EOF
+          python scripts/retrain_svd.py
 
       # ── Step 6: Trigger BERT4Rec GPU fine-tuning on Kaggle ────────────────
       - name: Trigger Kaggle BERT4Rec fine-tuning (T4 GPU)
