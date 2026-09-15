@@ -25,8 +25,8 @@ jobs:
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
-      AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET || 'movie-recommender-mlops' }}
+      AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
+      AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET || 'movie-recommender-mlops-745600' }}
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.KAGGLE_KEY }}
       KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'slavery786' }}
 
@@ -65,7 +65,7 @@ jobs:
       # ── Step 1.5: Ensure master raw dataset exists ────────────────────────
       - name: Ensure MovieLens raw dataset exists
         run: |
-          python -c "
+          python - <<'EOF'
           from pathlib import Path
           from src.ingestion.movielens_fetcher import download_movielens, normalize_ratings
           p = Path('data/raw/ml-1m/ratings.csv')
@@ -75,8 +75,10 @@ jobs:
               df = normalize_ratings(dataset_dir, 'ml-1m')
               p.parent.mkdir(parents=True, exist_ok=True)
               df.to_csv(p, index=False)
-              print('✓ Master dataset downloaded & normalized')
-          "
+              print('Master dataset downloaded and normalized')
+          else:
+              print('Master dataset already present:', str(p))
+          EOF
 
       # ── Step 2: Release next replay batch ─────────────────────────────────
       - name: Release next replay batch
@@ -167,7 +169,7 @@ jobs:
         id: promote
         if: steps.replay.outputs.batch_available == 'true'
         run: |
-          python - <<'EOF'
+          python - <<'EOF' >> $GITHUB_OUTPUT
           import json
           from pathlib import Path
           from src.tracking.model_registry import evaluate_and_promote
@@ -187,7 +189,6 @@ jobs:
 
           print(f"promoted={str(promoted).lower()}")
           EOF
-          ) >> $GITHUB_OUTPUT
 
       # ── Step 8: Upload new champion to AWS S3 ─────────────────────────────
       - name: Upload champion model & state to AWS S3
