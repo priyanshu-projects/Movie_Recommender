@@ -94,9 +94,8 @@ def evaluate_and_promote(
     elif model_type == "bert4rec":
         k = eval_cfg.get("k", 10)
         delta = eval_cfg.get("promotion_min_ndcg_delta", 0.001)
-        metric_key = f"ndcg@{k}"
-        cand_ndcg = candidate_metrics.get(metric_key, 0.0)
-        champ_ndcg = champ_metrics.get(metric_key, 0.0)
+        cand_ndcg = candidate_metrics.get(f"ndcg_{k}") or candidate_metrics.get(f"ndcg@{k}", 0.0)
+        champ_ndcg = champ_metrics.get(f"ndcg_{k}") or champ_metrics.get(f"ndcg@{k}", 0.0)
         promoted = cand_ndcg > champ_ndcg + delta
         logger.info(
             "BERT4Rec champion/challenger: champion NDCG=%.4f | candidate NDCG=%.4f | Δ=%.4f | promoted=%s",
