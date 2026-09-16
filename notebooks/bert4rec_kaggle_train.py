@@ -1,4 +1,4 @@
-# AUTO-TRIGGERED: 2026-08-23T10:02:30Z
+# AUTO-TRIGGERED: 2026-09-16T00:02:38Z
 """
 notebooks/bert4rec_kaggle_train.py
 
@@ -122,7 +122,7 @@ print(f"\n✓ Loaded {total_kept:,} positive ratings across {len(user_histories)
 
 # ── Cell 5: Config ────────────────────────────────────────────────────────────
 WARM_START = False
-if AZURE_OK:
+if S3_OK and "download_blob" in dir():
     ws_path = WORK / "champion_model.pkl"
     if not ws_path.exists():
         WARM_START = download_blob("models/champion/champion_model.pkl", ws_path)
